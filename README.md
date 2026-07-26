@@ -121,7 +121,30 @@ vq, _ := registry.ValuesQuery(filtersql.ClickHouse{}, joins, "severity", activeF
 
 `ValueExpr` lets the SELECT side differ from the WHERE side (e.g. `if(f.exploited,'Yes','No')` for a display label) — with the documented invariant that the display value must round-trip back through the filter.
 
-### 4. A schema endpoint that can't drift
+### 4. Aggregation & facet counts
+
+`FacetCounts` is the `ValuesQuery` sibling for `Critical (42)`-style sidebars — rows per value of a field, self-excluding that field's own filter:
+
+```go
+fc, _ := registry.FacetCounts(filtersql.ClickHouse{}, joins, "status", activeFilters)
+// SELECT a.status AS bucket, count() AS n
+// FROM asset a INNER JOIN finding f ON f.asset_id = a.id
+// WHERE tenant_id = ? AND f.severity >= ?     <- status's own filter excluded
+// GROUP BY a.status
+```
+
+`AggregateQuery` is the general form — `count`/`count_distinct`/`sum`/`avg`/`min`/`max`, optionally grouped, with an explicit `Exclude` knob so metric tiles (all filters apply) and facets (self-excluded) are different calls, not a guess:
+
+```go
+agg, _ := registry.AggregateQuery(dialect, joins,
+    filtersql.Aggregation{GroupBy: "status", Func: filtersql.Avg, Metric: "severity"},
+    activeFilters)
+// SELECT a.status AS bucket, avg(f.severity) AS value ... GROUP BY a.status
+```
+
+`count()` vs `count(*)` is dialect-rendered; `sum`/`avg` validate the metric is numeric.
+
+### 5. A schema endpoint that can't drift
 
 ```go
 json.NewEncoder(w).Encode(registry.Schema())
@@ -138,6 +161,37 @@ json.NewEncoder(w).Encode(registry.Schema())
 ```
 
 The operator list comes from the same `Type → operators` table the resolver executes against, so the schema always reports exactly what the engine will accept. Mark a field `Hidden: true` to keep a virtual/search field out of the UI while still filterable.
+
+### 6. Sorting & pagination — the rest of a list endpoint
+
+Filtering is half of a list endpoint; sorting and paging are the other half, and they come from the same registry.
+
+**Sorting** is gated by a `Sortable` flag — which is also a security control: it allowlists which columns a user-supplied sort key may reach, so sorting can't become arbitrary `ORDER BY` injection.
+
+```go
+order, _ := registry.OrderBy(dialect, []filtersql.Sort{
+    {Key: "severity", Desc: true, Nulls: filtersql.NullsLast},
+    {Key: "id"}, // unique tie-breaker
+})
+// f.severity DESC NULLS LAST, a.id ASC
+```
+
+**Null operators** — mark a field `Nullable: true` and it accepts `_is_null` / `_is_not_null` (no value), which Schema then advertises.
+
+**Pagination** — offset for simple cases, keyset/cursor for stable deep paging:
+
+```go
+page1, _ := filtersql.LimitOffset(50, 0)       // "LIMIT 50"
+
+// Next page: encode the last row's sort values, then build the seek predicate
+// from the SAME sort spec — so ORDER BY and the cursor can never disagree.
+token, _  := filtersql.EncodeCursor(filtersql.Cursor{"severity": 7, "id": "asset-123"})
+cur, _    := filtersql.DecodeCursor(token)
+seek, args, _ := registry.KeysetWhere(dialect, sorts, cur)
+// ((f.severity < ?) OR (f.severity = ? AND a.id > ?))   -- AND this with your filter WHERE
+```
+
+Keyset requires non-null, unique sort keys (add a unique tie-breaker like the id as the last sort) — the standard seek-method contract.
 
 ---
 
@@ -179,6 +233,7 @@ Ships with `ClickHouse{}` and `Postgres{}`.
 | `timestamp` | `_eq` `_gt` `_gte` `_lt` `_lte` |
 | `array` | `_contains` `_contains_any` `_not_contains` `_not_contains_any` |
 | `map` | `_has_keys` `_not_has_keys` `_has_key_values` `_not_has_key_values` |
+| *any `Nullable` field* | `_is_null` `_is_not_null` (no value) |
 
 An operator illegal for a field's type is a compile error, not silent wrong SQL.
 
@@ -189,9 +244,10 @@ Every user-supplied value is a bound argument — nothing is string-interpolated
 ## Roadmap
 
 - More dialects (MySQL, SQLite)
+- Executing integration tests + injection fuzz test + CI
+- `HAVING` support (filter on aggregates)
 - Per-field operator allow/deny overrides
-- Cursor/keyset pagination helpers
-- Aggregation/group-by projection flow
+- Raw-expression vs identifier distinction for `Column`/`ValueExpr` (projection-side quoting)
 
 ## License
 

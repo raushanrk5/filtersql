@@ -14,9 +14,11 @@ import (
 
 // registry is the single source of truth: one entry per filterable field.
 var registry = filtersql.Registry{
-	"name":         {Type: filtersql.TypeString, Column: "a.name"},
+	"id":           {Type: filtersql.TypeID, Column: "a.id", Sortable: true},
+	"name":         {Type: filtersql.TypeString, Column: "a.name", Sortable: true},
+	"owner":        {Type: filtersql.TypeString, Column: "a.owner", Nullable: true},
 	"status":       {Type: filtersql.TypeEnum, Column: "a.status", Enum: []string{"ACTIVE", "ARCHIVED"}},
-	"severity":     {Type: filtersql.TypeInt, Column: "f.severity", Joins: []string{"finding"}},
+	"severity":     {Type: filtersql.TypeInt, Column: "f.severity", Sortable: true, Joins: []string{"finding"}},
 	"is_exploited": {Type: filtersql.TypeBool, Column: "if(f.exploited,'Yes','No')", ValueExpr: "if(f.exploited,'Yes','No')", Joins: []string{"finding"}},
 	"tags":         {Type: filtersql.TypeArray, Column: "a.tags"},
 	"labels":       {Type: filtersql.TypeMap, Column: "a.labels"},
@@ -75,6 +77,54 @@ func main() {
 	fmt.Printf("FROM asset a\n%s\n", vq.JoinSQL)
 	fmt.Printf("WHERE tenant_id = ? AND %s\nARGS: %v\n", vq.Where, vq.Args)
 	fmt.Println("  ^ severity's own >= filter is excluded; the finding JOIN is still emitted.")
+
+	section("6a. Facet counts — 'Critical (42)' sidebar: rows per status value")
+	fc, _ := registry.FacetCounts(filtersql.ClickHouse{}, joins, "status", active)
+	fmt.Printf("SELECT %s AS bucket, %s AS n\n", fc.GroupExpr, fc.AggExpr)
+	fmt.Printf("FROM asset a\n%sWHERE tenant_id = ? %s\nGROUP BY %s\nARGS: %v\n",
+		joinOrBlank(fc.JoinSQL), andWhere(fc.Where), fc.GroupExpr, fc.Args)
+	fmt.Println("  ^ status's own filter excluded (a facet doesn't filter itself).")
+
+	section("6b. Metric aggregation — avg(severity) grouped by status, ALL filters apply")
+	agg, _ := registry.AggregateQuery(filtersql.ClickHouse{}, joins,
+		filtersql.Aggregation{GroupBy: "status", Func: filtersql.Avg, Metric: "severity"}, active)
+	fmt.Printf("SELECT %s AS bucket, %s AS value\n", agg.GroupExpr, agg.AggExpr)
+	fmt.Printf("FROM asset a\n%sWHERE tenant_id = ? %s\nGROUP BY %s\nARGS: %v\n",
+		joinOrBlank(agg.JoinSQL), andWhere(agg.Where), agg.GroupExpr, agg.Args)
+	fmt.Println("  ^ Exclude unset, so status = ACTIVE still applies here.")
+
+	section("7. Read path — WHERE + ORDER BY + keyset pagination, one endpoint")
+	// A list request: filter, sort by severity desc then id (unique tie-breaker).
+	sorts := []filtersql.Sort{{Key: "severity", Desc: true}, {Key: "id"}}
+	listWhere, listArgs, _ := registry.Compile(filtersql.ClickHouse{}, []filtersql.Condition{
+		{Key: "status", Op: filtersql.OpEq, Values: []any{"ACTIVE"}},
+		{Key: "owner", Op: filtersql.OpIsNotNull}, // NULL operator, no value
+	})
+	order, _ := registry.OrderBy(filtersql.ClickHouse{}, sorts)
+	limit, _ := filtersql.LimitOffset(50, 0)
+	fmt.Printf("Page 1:\n  WHERE %s\n  ORDER BY %s\n  %s\n  ARGS %v\n", listWhere, order, limit, listArgs)
+
+	// Next page: caller encodes the last row's sort values into a cursor.
+	token, _ := filtersql.EncodeCursor(filtersql.Cursor{"severity": 7, "id": "asset-123"})
+	cur, _ := filtersql.DecodeCursor(token)
+	seek, seekArgs, _ := registry.KeysetWhere(filtersql.ClickHouse{}, sorts, cur)
+	fmt.Printf("Next page (cursor=%s):\n  WHERE %s AND %s\n  ORDER BY %s\n  %s\n  ARGS %v + %v\n",
+		token, listWhere, seek, order, limit, listArgs, seekArgs)
+	fmt.Println("  ^ seek predicate is built from the SAME sort spec, so order & cursor can't disagree.")
+}
+
+func joinOrBlank(s string) string {
+	if s == "" {
+		return ""
+	}
+	return s + "\n"
+}
+
+func andWhere(s string) string {
+	if s == "" {
+		return ""
+	}
+	return "AND " + s
 }
 
 func section(title string) { fmt.Printf("\n\033[1m%s\033[0m\n%s\n", title, dashes(len(title))) }

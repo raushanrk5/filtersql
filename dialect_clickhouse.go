@@ -41,6 +41,16 @@ func (ClickHouse) MapHasKeys(q *Query, col string, keys []string) string {
 	return strings.Join(parts, " AND ")
 }
 
+// Aggregate renders an aggregate call; ClickHouse spells "count all" as count().
+func (ClickHouse) Aggregate(fn AggFunc, expr string) string {
+	return aggCall(fn, expr, "count()")
+}
+
+// OrderTerm uses ClickHouse's native NULLS FIRST/LAST support.
+func (ClickHouse) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
+	return stdOrderTerm(expr, desc, nulls)
+}
+
 func (ClickHouse) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string {
 	var parts []string
 	for _, p := range pairs {

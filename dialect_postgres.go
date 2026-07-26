@@ -46,6 +46,16 @@ func (Postgres) MapHasKeys(q *Query, col string, keys []string) string {
 	return fmt.Sprintf("%s ?& %s", col, q.Arg(pgTextArray(keys)))
 }
 
+// Aggregate renders an aggregate call; Postgres spells "count all" as count(*).
+func (Postgres) Aggregate(fn AggFunc, expr string) string {
+	return aggCall(fn, expr, "count(*)")
+}
+
+// OrderTerm uses Postgres's native NULLS FIRST/LAST support.
+func (Postgres) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
+	return stdOrderTerm(expr, desc, nulls)
+}
+
 func (Postgres) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string {
 	var parts []string
 	for _, p := range pairs {

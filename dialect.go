@@ -30,6 +30,35 @@ type Dialect interface {
 
 	// MapHasKeyValues renders a "for each key, value matches" test.
 	MapHasKeyValues(q *Query, col string, pairs []KeyValue) string
+
+	// Aggregate renders an aggregate function call over expr. When fn is Count
+	// and expr is empty, the dialect emits its "count all rows" form (count()
+	// for ClickHouse, count(*) elsewhere). Other functions wrap expr, e.g.
+	// avg(expr) or count(DISTINCT expr).
+	Aggregate(fn AggFunc, expr string) string
+
+	// OrderTerm renders one ORDER BY term: expr with ASC/DESC and NULLS handling.
+	// ClickHouse/Postgres/SQLite support "NULLS FIRST|LAST" natively; a dialect
+	// without it (MySQL) emulates via a leading "expr IS NULL" term.
+	OrderTerm(expr string, desc bool, nulls NullsOrder) string
+}
+
+// stdOrderTerm renders a standard-SQL ORDER BY term with native NULLS FIRST/LAST.
+// Shared by dialects that support that syntax.
+func stdOrderTerm(expr string, desc bool, nulls NullsOrder) string {
+	s := expr
+	if desc {
+		s += " DESC"
+	} else {
+		s += " ASC"
+	}
+	switch nulls {
+	case NullsFirst:
+		s += " NULLS FIRST"
+	case NullsLast:
+		s += " NULLS LAST"
+	}
+	return s
 }
 
 // Query accumulates bind arguments while a filter is compiled and hands back
