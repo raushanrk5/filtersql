@@ -22,9 +22,40 @@ type Field struct {
 	ValueExpr string
 	Enum      []string // allowed values for TypeEnum (also surfaced by Schema)
 	Hidden    bool     // resolvable in WHERE but omitted from Schema (virtual fields)
+	Nullable  bool     // when true, the field also accepts _is_null / _is_not_null
+	Sortable  bool     // when true, the field may appear in OrderBy (and Schema advertises it)
 	Joins     []string // join keys this field needs; each names a Join in the Joins map
 	// passed to CompileWithJoins / ProjectWithJoins. A join is emitted only when a
 	// filter on this field actually resolves (WHERE) or the field is projected.
+}
+
+// allows reports whether op is valid for this field: its Type's operators, plus
+// the null operators when the field is Nullable.
+func (f Field) allows(op Operator) bool {
+	if f.Nullable && isNullOp(op) {
+		return true
+	}
+	return f.Type.allows(op)
+}
+
+// schemaOperators is the operator list Schema advertises: the Type's operators,
+// plus null operators for a Nullable field.
+func (f Field) schemaOperators() []Operator {
+	ops := f.Type.Operators()
+	if f.Nullable {
+		ops = append(append([]Operator(nil), ops...), nullOperators...)
+	}
+	return ops
+}
+
+// sortExpr is the expression used for ORDER BY / keyset comparisons: ValueExpr,
+// else Column, else the key. Kept identical between OrderBy and KeysetWhere so
+// the sort order and the cursor predicate can never disagree.
+func (f Field) sortExpr(key string) string {
+	if f.ValueExpr != "" {
+		return f.ValueExpr
+	}
+	return f.column(key)
 }
 
 // Registry maps a filter key to its Field definition.
@@ -75,6 +106,7 @@ type FieldSchema struct {
 	Type      Type       `json:"type"`
 	Operators []Operator `json:"operators"`
 	Enum      []string   `json:"enum,omitempty"`
+	Sortable  bool       `json:"sortable,omitempty"`
 }
 
 // Schema returns the introspection view of the registry: every non-hidden
@@ -88,8 +120,9 @@ func (r Registry) Schema() []FieldSchema {
 		out = append(out, FieldSchema{
 			Key:       key,
 			Type:      f.Type,
-			Operators: f.Type.Operators(),
+			Operators: f.schemaOperators(),
 			Enum:      f.Enum,
+			Sortable:  f.Sortable,
 		})
 	}
 	sortSchema(out)

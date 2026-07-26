@@ -126,7 +126,7 @@ func (r Registry) renderLeaf(q *Query, c Condition) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("unknown filter field: %q", c.Key)
 	}
-	if !f.Type.allows(c.Op) {
+	if !f.allows(c.Op) {
 		return "", fmt.Errorf("operator %q not valid for %s field %q", c.Op, f.Type, c.Key)
 	}
 	col := q.Ident(f.column(c.Key))
@@ -143,6 +143,14 @@ func (r Registry) renderLeaf(q *Query, c Condition) (string, error) {
 }
 
 func resolve(q *Query, f Field, col string, in Condition) (string, error) {
+	// Null operators are type-independent and take no value.
+	switch in.Op {
+	case OpIsNull:
+		return col + " IS NULL", nil
+	case OpIsNotNull:
+		return col + " IS NOT NULL", nil
+	}
+
 	switch f.Type {
 	case TypeString, TypeID, TypeEnum:
 		return resolveScalar(q, f, col, in)

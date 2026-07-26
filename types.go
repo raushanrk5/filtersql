@@ -51,6 +51,25 @@ const (
 	OpNotHasKeys      Operator = "_not_has_keys"
 	OpHasKeyValues    Operator = "_has_key_values"
 	OpNotHasKeyValues Operator = "_not_has_key_values"
+
+	// Null operators take no value and apply to any Nullable field regardless of
+	// Type. They are not in typeOperators — a field opts in via Field.Nullable.
+	OpIsNull    Operator = "_is_null"
+	OpIsNotNull Operator = "_is_not_null"
+)
+
+// nullOperators are valid on any Field whose Nullable flag is set.
+var nullOperators = []Operator{OpIsNull, OpIsNotNull}
+
+func isNullOp(op Operator) bool { return op == OpIsNull || op == OpIsNotNull }
+
+// NullsOrder controls where NULLs sort relative to non-NULLs in an ORDER BY term.
+type NullsOrder int
+
+const (
+	NullsDefault NullsOrder = iota // leave it to the database's default
+	NullsFirst
+	NullsLast
 )
 
 // typeOperators is the single source of truth for which operators each Type
