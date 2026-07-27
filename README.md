@@ -59,6 +59,25 @@ func main() {
 - **`go run ./example`** — a printed tour of every capability (no database).
 - **`cd cookbook && go run .`** — a complete, runnable HTTP service (`/filters`, `/assets/values`, `/assets/search` with filtering, sorting, and keyset pagination) backed by SQLite. The clearest "how do I use this in my service" reference.
 
+### Or generate the registry from a struct
+
+Prefer tags to a hand-written map? `FromStruct` builds the registry from `filter:"..."` tags. Only tagged fields are included (explicit opt-in), the type is inferred from the Go type, and a pointer implies `nullable`:
+
+```go
+type Asset struct {
+    ID       string  `filter:"id,sortable"`
+    Status   string  `filter:"status,enum=ACTIVE|ARCHIVED"`
+    Severity int     `filter:"severity,col=f.severity,sortable,joins=finding"`
+    Owner    *string `filter:"owner"`                        // pointer -> nullable
+    Count    int     `filter:"finding_count,col=count(),having"`
+    Internal string  // no tag -> not filterable
+}
+
+var Assets = filtersql.MustFromStruct(Asset{})
+```
+
+Options: `type=`, `col=`, `valueexpr=`, `enum=A|B|C`, `joins=a|b`, and the flags `sortable`, `nullable`, `hidden`, `raw`, `having`. Anonymous embedded structs are flattened, so shared filter sets compose.
+
 ---
 
 ## What you get from one registry
@@ -311,9 +330,9 @@ cd integration && go test  # executing tests against real SQLite
 ## Roadmap
 
 - More dialects (MySQL)
-- Postgres executing integration tests + injection fuzz test + CI
 - Per-field operator allow/deny overrides
-- Struct-tag registry generation + HTTP cookbook example
+- Production guardrails (max depth / IN-size / condition count)
+- More operators (`_between`, `_ends_with`)
 
 ## License
 
