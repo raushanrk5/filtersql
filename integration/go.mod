@@ -5,6 +5,7 @@ module github.com/raushanrk5/filtersql/integration
 go 1.25.0
 
 require (
+	github.com/lib/pq v1.12.3
 	github.com/raushanrk5/filtersql v0.0.0
 	modernc.org/sqlite v1.54.0
 )

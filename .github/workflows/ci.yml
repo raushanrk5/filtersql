@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: filtersql_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: gofmt (all modules)
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
+
+      - name: vet + test — root (zero-dep)
+        run: |
+          go vet ./...
+          go test -race ./...
+
+      - name: test — integration (SQLite + Postgres)
+        working-directory: integration
+        env:
+          FILTERSQL_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/filtersql_test?sslmode=disable
+        run: |
+          go vet ./...
+          go test -race ./...
+
+      - name: test — cookbook
+        working-directory: cookbook
+        run: |
+          go vet ./...
+          go test -race ./...

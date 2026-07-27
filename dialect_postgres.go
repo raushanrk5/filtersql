@@ -35,15 +35,18 @@ func (Postgres) ArrayContains(q *Query, col string, values []string, all bool) s
 	if all {
 		op = "@>" // contains: superset
 	}
-	return fmt.Sprintf("%s %s %s", col, op, q.Arg(pgTextArray(values)))
+	// Explicit ::text[] cast: the arg is bound as an array *literal string*, so
+	// without the cast Postgres must guess its type from context — which fails on
+	// some operator/driver combinations. The cast makes it unambiguous.
+	return fmt.Sprintf("%s %s %s::text[]", col, op, q.Arg(pgTextArray(values)))
 }
 
 func (Postgres) MapHasKeys(q *Query, col string, keys []string) string {
 	if len(keys) == 1 {
 		return fmt.Sprintf("%s ? %s", col, q.Arg(keys[0]))
 	}
-	// jsonb ?& array : has all keys
-	return fmt.Sprintf("%s ?& %s", col, q.Arg(pgTextArray(keys)))
+	// jsonb ?& text[] : has all keys
+	return fmt.Sprintf("%s ?& %s::text[]", col, q.Arg(pgTextArray(keys)))
 }
 
 // Aggregate renders an aggregate call; Postgres spells "count all" as count(*).

@@ -70,7 +70,7 @@ func TestCompile(t *testing.T) {
 			name:    "array not-contains-any (postgres overlap, negated)",
 			d:       Postgres{},
 			in:      []Condition{{Key: "tags", Op: OpNotContainsAny, Values: []any{"x", "y"}}},
-			wantSQL: `NOT ("a"."tags" && $1)`,
+			wantSQL: `NOT ("a"."tags" && $1::text[])`,
 			wantArg: []any{"{\"x\",\"y\"}"},
 		},
 		{
