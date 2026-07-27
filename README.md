@@ -345,6 +345,31 @@ rows, _ := db.Query(sql, b.Args()...)   // args in matching order
 
 You still own `SELECT`/`FROM` and tenant scoping — the Builder just guarantees the placeholders and args line up. Call the render methods in the order the fragments appear (WHERE parts, then `Having`). The [cookbook](cookbook/) uses it.
 
+## Typed queries & row scanning
+
+If you'd rather not hand-write `SELECT`/`rows.Scan`, `For[T]` pairs a registry with a row type (its `db` tags name the columns) and runs the whole thing — compile, execute, scan into `[]T`, and return the next cursor:
+
+```go
+type Asset struct {
+    ID       string `db:"id"`
+    Name     string `db:"name"`
+    Severity int    `db:"severity"`
+}
+
+assets := filtersql.For[Asset](registry, "asset")
+
+page, next, err := assets.Select(dialect).
+    Scope(func(b *filtersql.Builder) string { return "tenant_id = " + b.Arg(tenantID) }).
+    Where(filters).
+    Sort([]filtersql.Sort{{Key: "severity", Desc: true}, {Key: "id"}}).
+    After(cursor).      // "" for the first page
+    Limit(50).
+    All(ctx, db)        // db is any *sql.DB / *sql.Tx
+// page is []Asset; next is the cursor for the following page ("" if none)
+```
+
+Rendering is deferred and always ordered (scope → WHERE → seek), so method call order never affects placeholder numbering. `ScanAll[T]` / `ScanOne[T]` are also exported for scanning arbitrary `*sql.Rows`. This layer uses only `database/sql` from the standard library — **still no third-party dependencies.**
+
 ## Safety
 
 Every user-supplied value is a bound argument — nothing is string-interpolated into SQL. `_like` escapes `%` and `_` so a literal value can't inject a pattern; array/map literals are escaped per dialect. The engine is injection-safe at its boundary.
