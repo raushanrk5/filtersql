@@ -432,15 +432,30 @@ The root module has zero dependencies and is unit-tested with string assertions.
 
 ```sh
 go test ./...              # unit tests, no deps
-cd integration && go test  # executing tests against real SQLite
+cd integration && go test  # executing tests against real SQLite (+ Postgres/MySQL in CI)
 ```
+
+Injection safety is backed by a fuzz test (`FuzzInjectionInvariant`) that proves the compiled SQL structure is value-independent across all dialects. Runnable [examples](https://pkg.go.dev/github.com/raushanrk5/filtersql#pkg-examples) double as docs on pkg.go.dev.
+
+## Performance
+
+Compiling a typical filter is ~1.5–3 µs with ~30–50 allocations — filtersql is a thin, allocation-light layer over your query, not a runtime cost:
+
+```
+BenchmarkCompileSimple-10        2854 ns/op    8107 B/op    48 allocs/op
+BenchmarkCompileNested-10        1660 ns/op    1200 B/op    30 allocs/op
+BenchmarkCompileWithJoins-10     1570 ns/op     992 B/op    30 allocs/op
+```
+
+Run `go test -bench . -benchmem`.
 
 ## Roadmap
 
-- More dialects (MySQL)
-- Per-field operator allow/deny overrides
-- Production guardrails (max depth / IN-size / condition count)
-- More operators (`_between`, `_ends_with`)
+The core is feature-complete. Possible future work:
+
+- UPDATE / DELETE over a filter set (same registry, mutations)
+- HMAC-signed keyset cursors
+- Additional dialects
 
 ## License
 
