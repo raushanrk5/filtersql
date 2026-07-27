@@ -249,15 +249,25 @@ Ships with `ClickHouse{}`, `Postgres{}`, and `SQLite{}` (SQLite stores arrays/ma
 
 | Type | Operators |
 |---|---|
-| `string`, `id`, `enum` | `_eq` `_ne` `_in` `_nin` `_like` `_starts_with` *(id/enum: no text ops)* |
-| `int`, `float` | `_eq` `_ne` `_in` `_nin` `_gt` `_gte` `_lt` `_lte` |
+| `string` | `_eq` `_ne` `_in` `_nin` `_like` `_starts_with` `_ends_with` |
+| `id`, `enum` | `_eq` `_ne` `_in` `_nin` |
+| `int`, `float` | `_eq` `_ne` `_in` `_nin` `_gt` `_gte` `_lt` `_lte` `_between` |
 | `bool` | `_eq` `_ne` |
-| `timestamp` | `_eq` `_gt` `_gte` `_lt` `_lte` |
+| `timestamp` | `_eq` `_gt` `_gte` `_lt` `_lte` `_between` |
 | `array` | `_contains` `_contains_any` `_not_contains` `_not_contains_any` |
 | `map` | `_has_keys` `_not_has_keys` `_has_key_values` `_not_has_key_values` |
 | *any `Nullable` field* | `_is_null` `_is_not_null` (no value) |
 
-An operator illegal for a field's type is a compile error, not silent wrong SQL.
+`_between` takes exactly two values `[lo, hi]` (inclusive). An operator illegal for a field's type is a compile error, not silent wrong SQL.
+
+**Per-field operator overrides.** Narrow a field to a subset of its type's operators — an allowlist (`Only`) or a denylist (`Except`). Both `Schema()` and execution read the same narrowed set, so they stay consistent:
+
+```go
+{Type: filtersql.TypeString, Column: "a.body", Only: []filtersql.Operator{filtersql.OpEq}}   // huge column: equality only
+{Type: filtersql.TypeString, Column: "a.name", Except: []filtersql.Operator{filtersql.OpLike}} // no substring scans
+```
+
+In struct tags: `filter:"body,only=_eq"` / `filter:"name,except=_like"`.
 
 ## HAVING — filtering on aggregates
 

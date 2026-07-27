@@ -128,6 +128,10 @@ func parseFilterTag(sf reflect.StructField, tag string) (string, Field, error) {
 			f.Enum = strings.Split(val, "|")
 		case "joins":
 			f.Joins = strings.Split(val, "|")
+		case "only":
+			f.Only = parseOperatorList(val)
+		case "except":
+			f.Except = parseOperatorList(val)
 		case "sortable":
 			f.Sortable = true
 		case "nullable":
@@ -159,6 +163,18 @@ func parseFilterTag(sf reflect.StructField, tag string) (string, Field, error) {
 		return "", Field{}, fmt.Errorf("unknown filter type %q", f.Type)
 	}
 	return key, f, nil
+}
+
+// parseOperatorList splits a pipe-separated list of operators, e.g. "_eq|_in".
+func parseOperatorList(s string) []Operator {
+	parts := strings.Split(s, "|")
+	ops := make([]Operator, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			ops = append(ops, Operator(p))
+		}
+	}
+	return ops
 }
 
 func inferDataType(t reflect.Type) (Type, error) {

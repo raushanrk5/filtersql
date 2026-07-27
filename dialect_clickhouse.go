@@ -16,12 +16,8 @@ func (ClickHouse) Placeholder(int) string { return "?" }
 // be back-quoted per segment.
 func (ClickHouse) QuoteIdent(ident string) string { return ident }
 
-func (ClickHouse) Like(q *Query, col, pattern string, prefix bool) string {
-	needle := escapeLike(pattern) + "%"
-	if !prefix {
-		needle = "%" + needle
-	}
-	return fmt.Sprintf("%s ILIKE %s", col, q.Arg(needle))
+func (ClickHouse) Like(q *Query, col, pattern string, match LikeMatch) string {
+	return fmt.Sprintf("%s ILIKE %s", col, q.Arg(likeNeedle(pattern, match)))
 }
 
 func (ClickHouse) ArrayContains(q *Query, col string, values []string, all bool) string {

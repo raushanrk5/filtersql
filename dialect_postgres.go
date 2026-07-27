@@ -22,12 +22,8 @@ func (Postgres) QuoteIdent(ident string) string {
 	return strings.Join(segs, ".")
 }
 
-func (Postgres) Like(q *Query, col, pattern string, prefix bool) string {
-	needle := escapeLike(pattern) + "%"
-	if !prefix {
-		needle = "%" + needle
-	}
-	return fmt.Sprintf("%s ILIKE %s", col, q.Arg(needle))
+func (Postgres) Like(q *Query, col, pattern string, match LikeMatch) string {
+	return fmt.Sprintf("%s ILIKE %s", col, q.Arg(likeNeedle(pattern, match)))
 }
 
 func (Postgres) ArrayContains(q *Query, col string, values []string, all bool) string {

@@ -209,18 +209,19 @@ func resolveScalar(q *Query, f Field, col string, in Condition) (string, error) 
 			neg = "NOT "
 		}
 		return fmt.Sprintf("%s %sIN (%s)", col, neg, strings.Join(marks, ", ")), nil
-	case OpLike:
+	case OpLike, OpStartsWith, OpEndsWith:
 		v, err := scalarStr(f, in.Values)
 		if err != nil {
 			return "", err
 		}
-		return q.d.Like(q, col, v, false), nil
-	case OpStartsWith:
-		v, err := scalarStr(f, in.Values)
-		if err != nil {
-			return "", err
+		match := MatchSubstring
+		switch in.Op {
+		case OpStartsWith:
+			match = MatchPrefix
+		case OpEndsWith:
+			match = MatchSuffix
 		}
-		return q.d.Like(q, col, v, true), nil
+		return q.d.Like(q, col, v, match), nil
 	}
 	return "", fmt.Errorf("operator %q not handled for scalar", in.Op)
 }
@@ -250,6 +251,19 @@ func resolveNumeric(q *Query, col string, in Condition) (string, error) {
 			neg = "NOT "
 		}
 		return fmt.Sprintf("%s %sIN (%s)", col, neg, strings.Join(marks, ", ")), nil
+	case OpBetween:
+		if len(in.Values) != 2 {
+			return "", fmt.Errorf("%w: _between needs exactly 2 values, got %d", ErrBadValue, len(in.Values))
+		}
+		lo, err := toFloat(in.Values[0])
+		if err != nil {
+			return "", err
+		}
+		hi, err := toFloat(in.Values[1])
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s BETWEEN %s AND %s", col, q.Arg(lo), q.Arg(hi)), nil
 	}
 	return "", fmt.Errorf("operator %q not handled for numeric", in.Op)
 }
@@ -263,6 +277,20 @@ func resolveBool(q *Query, col string, in Condition) (string, error) {
 }
 
 func resolveTimestamp(q *Query, col string, in Condition) (string, error) {
+	if in.Op == OpBetween {
+		if len(in.Values) != 2 {
+			return "", fmt.Errorf("%w: _between needs exactly 2 values, got %d", ErrBadValue, len(in.Values))
+		}
+		lo, err := toString(in.Values[0])
+		if err != nil {
+			return "", err
+		}
+		hi, err := toString(in.Values[1])
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s BETWEEN %s AND %s", col, q.Arg(lo), q.Arg(hi)), nil
+	}
 	v, err := toString(first(in.Values))
 	if err != nil {
 		return "", err

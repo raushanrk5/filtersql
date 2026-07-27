@@ -37,10 +37,12 @@ const (
 	OpNin        Operator = "_nin"
 	OpLike       Operator = "_like"        // case-insensitive substring
 	OpStartsWith Operator = "_starts_with" // case-insensitive prefix
+	OpEndsWith   Operator = "_ends_with"   // case-insensitive suffix
 	OpGt         Operator = "_gt"
 	OpGte        Operator = "_gte"
 	OpLt         Operator = "_lt"
 	OpLte        Operator = "_lte"
+	OpBetween    Operator = "_between" // inclusive range: exactly [lo, hi]
 
 	OpContains       Operator = "_contains"     // array ⊇ all values
 	OpContainsAny    Operator = "_contains_any" // array ∩ values ≠ ∅
@@ -76,16 +78,26 @@ const (
 // accepts. Compile validates against it; Schema reports from it. They cannot
 // drift because they read the same map.
 var typeOperators = map[Type][]Operator{
-	TypeString:    {OpEq, OpNe, OpIn, OpNin, OpLike, OpStartsWith},
+	TypeString:    {OpEq, OpNe, OpIn, OpNin, OpLike, OpStartsWith, OpEndsWith},
 	TypeID:        {OpEq, OpNe, OpIn, OpNin},
-	TypeInt:       {OpEq, OpNe, OpIn, OpNin, OpGt, OpGte, OpLt, OpLte},
-	TypeFloat:     {OpEq, OpNe, OpIn, OpNin, OpGt, OpGte, OpLt, OpLte},
+	TypeInt:       {OpEq, OpNe, OpIn, OpNin, OpGt, OpGte, OpLt, OpLte, OpBetween},
+	TypeFloat:     {OpEq, OpNe, OpIn, OpNin, OpGt, OpGte, OpLt, OpLte, OpBetween},
 	TypeBool:      {OpEq, OpNe},
-	TypeTimestamp: {OpEq, OpGt, OpGte, OpLt, OpLte},
+	TypeTimestamp: {OpEq, OpGt, OpGte, OpLt, OpLte, OpBetween},
 	TypeEnum:      {OpEq, OpNe, OpIn, OpNin},
 	TypeArray:     {OpContains, OpContainsAny, OpNotContains, OpNotContainsAny},
 	TypeMap:       {OpHasKeys, OpNotHasKeys, OpHasKeyValues, OpNotHasKeyValues},
 }
+
+// LikeMatch selects how a text match anchors: substring (default), prefix, or
+// suffix. Dialects translate it (ILIKE '%x%' / 'x%' / '%x', or LOWER()+LIKE).
+type LikeMatch int
+
+const (
+	MatchSubstring LikeMatch = iota
+	MatchPrefix
+	MatchSuffix
+)
 
 // Operators returns the operators supported by a Type, or nil if unknown.
 func (t Type) Operators() []Operator { return typeOperators[t] }

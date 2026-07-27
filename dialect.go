@@ -15,11 +15,10 @@ type Dialect interface {
 	// A dialect may return the identifier unchanged if quoting is unnecessary.
 	QuoteIdent(ident string) string
 
-	// Like renders a case-insensitive text match. pattern is the raw needle
-	// (already stripped of wildcards); prefix=true means anchored prefix match,
-	// otherwise substring. The dialect is responsible for wildcard escaping and
-	// for choosing ILIKE vs lower()/LIKE.
-	Like(q *Query, col, pattern string, prefix bool) string
+	// Like renders a case-insensitive text match. pattern is the raw needle;
+	// match selects substring / prefix / suffix anchoring. The dialect is
+	// responsible for wildcard escaping and for choosing ILIKE vs lower()/LIKE.
+	Like(q *Query, col, pattern string, match LikeMatch) string
 
 	// ArrayContains renders array membership. all=true means "contains every
 	// value" (superset); all=false means "contains any value" (intersection).
@@ -41,6 +40,20 @@ type Dialect interface {
 	// ClickHouse/Postgres/SQLite support "NULLS FIRST|LAST" natively; a dialect
 	// without it (MySQL) emulates via a leading "expr IS NULL" term.
 	OrderTerm(expr string, desc bool, nulls NullsOrder) string
+}
+
+// likeNeedle escapes the pattern's wildcards and wraps it for the requested
+// anchoring: substring (%x%), prefix (x%), or suffix (%x). Shared by dialects.
+func likeNeedle(pattern string, m LikeMatch) string {
+	p := escapeLike(pattern)
+	switch m {
+	case MatchPrefix:
+		return p + "%"
+	case MatchSuffix:
+		return "%" + p
+	default:
+		return "%" + p + "%"
+	}
 }
 
 // stdOrderTerm renders a standard-SQL ORDER BY term with native NULLS FIRST/LAST.

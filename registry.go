@@ -24,6 +24,12 @@ type Field struct {
 	Hidden    bool     // resolvable in WHERE but omitted from Schema (virtual fields)
 	Nullable  bool     // when true, the field also accepts _is_null / _is_not_null
 	Sortable  bool     // when true, the field may appear in OrderBy (and Schema advertises it)
+	// Only, when non-empty, restricts the field to this subset of its type's
+	// operators (an allowlist) — e.g. a large text column limited to {_eq}.
+	Only []Operator
+	// Except removes specific operators the type would otherwise allow (a
+	// denylist) — e.g. everything but _like. Applied after Only.
+	Except []Operator
 	// Raw marks Column as a raw SQL expression rather than a plain identifier, so
 	// it is passed through verbatim instead of being quoted by the dialect. Set it
 	// whenever Column is a function/CASE expression (e.g. if(a.active,'Yes','No')):
@@ -39,24 +45,54 @@ type Field struct {
 	// filter on this field actually resolves (WHERE) or the field is projected.
 }
 
-// allows reports whether op is valid for this field: its Type's operators, plus
-// the null operators when the field is Nullable.
-func (f Field) allows(op Operator) bool {
-	if f.Nullable && isNullOp(op) {
-		return true
-	}
-	return f.Type.allows(op)
-}
-
-// schemaOperators is the operator list Schema advertises: the Type's operators,
-// plus null operators for a Nullable field.
-func (f Field) schemaOperators() []Operator {
-	ops := f.Type.Operators()
+// effectiveOperators is the single source of truth for which operators this
+// field accepts: its Type's operators (plus null operators when Nullable),
+// narrowed by Only (allowlist) and then Except (denylist). Both allows() and
+// schemaOperators() read it, so schema and execution can never disagree.
+func (f Field) effectiveOperators() []Operator {
+	ops := append([]Operator(nil), f.Type.Operators()...)
 	if f.Nullable {
-		ops = append(append([]Operator(nil), ops...), nullOperators...)
+		ops = append(ops, nullOperators...)
+	}
+	if len(f.Only) > 0 {
+		only := make(map[Operator]bool, len(f.Only))
+		for _, o := range f.Only {
+			only[o] = true
+		}
+		ops = filterOps(ops, func(o Operator) bool { return only[o] })
+	}
+	if len(f.Except) > 0 {
+		except := make(map[Operator]bool, len(f.Except))
+		for _, o := range f.Except {
+			except[o] = true
+		}
+		ops = filterOps(ops, func(o Operator) bool { return !except[o] })
 	}
 	return ops
 }
+
+func filterOps(ops []Operator, keep func(Operator) bool) []Operator {
+	out := ops[:0]
+	for _, o := range ops {
+		if keep(o) {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+// allows reports whether op is valid for this field.
+func (f Field) allows(op Operator) bool {
+	for _, o := range f.effectiveOperators() {
+		if o == op {
+			return true
+		}
+	}
+	return false
+}
+
+// schemaOperators is the operator list Schema advertises for the field.
+func (f Field) schemaOperators() []Operator { return f.effectiveOperators() }
 
 // whereExpr renders the WHERE-side reference. A plain identifier is quoted by
 // the dialect; a raw expression (Raw, or a Having aggregate) passes through.

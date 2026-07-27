@@ -27,12 +27,8 @@ func (SQLite) QuoteIdent(ident string) string {
 
 // Like uses LIKE with an explicit ESCAPE, since SQLite has no default escape
 // character. escapeLike (shared) neutralizes % and _ in the literal value.
-func (SQLite) Like(q *Query, col, pattern string, prefix bool) string {
-	needle := escapeLike(pattern) + "%"
-	if !prefix {
-		needle = "%" + needle
-	}
-	return fmt.Sprintf(`%s LIKE %s ESCAPE '\'`, col, q.Arg(needle))
+func (SQLite) Like(q *Query, col, pattern string, match LikeMatch) string {
+	return fmt.Sprintf(`%s LIKE %s ESCAPE '\'`, col, q.Arg(likeNeedle(pattern, match)))
 }
 
 // ArrayContains queries a JSON-array column via json_each. "any" is a simple
