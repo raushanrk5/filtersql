@@ -32,11 +32,13 @@ func TestCompile(t *testing.T) {
 			wantArg: []any{"web-01"},
 		},
 		{
-			name:    "string in (postgres numbers placeholders)",
+			// Postgres binds one text[] param for string _in (avoids the 65535
+			// placeholder limit); see also TestScalarIn.
+			name:    "string in (postgres array param)",
 			d:       Postgres{},
 			in:      []Condition{{Key: "name", Op: OpIn, Values: []any{"a", "b", "c"}}},
-			wantSQL: `"a"."name" IN ($1, $2, $3)`,
-			wantArg: []any{"a", "b", "c"},
+			wantSQL: `"a"."name" = ANY($1::text[])`,
+			wantArg: []any{`{"a","b","c"}`},
 		},
 		{
 			name:    "like wraps and escapes (clickhouse)",

@@ -119,6 +119,21 @@ func TestFilter_ArrayContainsViaJSON(t *testing.T) {
 	}
 }
 
+func TestScalarIn_JSONEachExecutes(t *testing.T) {
+	db := setup(t)
+	// String _in on SQLite binds one JSON-array param and expands via json_each.
+	reg := fq.Registry{"name": {Type: fq.TypeString, Column: "name"}}
+	where, args, err := reg.Compile(fq.SQLite{}, []fq.Condition{
+		{Key: "name", Op: fq.OpIn, Values: []any{"web-01", "db-01"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ids(t, db, "SELECT id FROM asset WHERE "+where+" ORDER BY id", args)
+	if want := []string{"a1", "a3"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v (where: %s)", got, want, where)
+	}
+}
+
 func TestKeysetPagination_PagesCorrectly(t *testing.T) {
 	db := setup(t)
 	sorts := []fq.Sort{{Key: "severity", Desc: true}, {Key: "id"}}

@@ -28,4 +28,7 @@ var (
 	// ErrInvalidCondition: a Condition is malformed (sets more than one form, or
 	// mixes WHERE and HAVING fields in one boolean group).
 	ErrInvalidCondition = errors.New("invalid condition")
+	// ErrTooComplex: the filter blew a configured Limit (depth, condition count,
+	// or values per filter). Also a 400-class failure — the payload is abusive.
+	ErrTooComplex = errors.New("filter too complex")
 )

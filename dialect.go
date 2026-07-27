@@ -81,6 +81,16 @@ func stdOrderTerm(expr string, desc bool, nulls NullsOrder) string {
 	return s
 }
 
+// scalarInDialect is an optional Dialect upgrade: when a dialect implements it,
+// membership (_in / _nin) on string/enum fields binds a single array/JSON
+// parameter instead of one placeholder per value — sidestepping the database's
+// parameter-count limit (Postgres caps at 65535). Detected via a type assertion,
+// so dialects without it simply fall back to IN (?, ?, ...). Non-breaking:
+// nothing is added to the Dialect interface itself.
+type scalarInDialect interface {
+	ScalarIn(q *Query, col string, values []string, negate bool) string
+}
+
 // Query accumulates bind arguments while a filter is compiled and hands back
 // the right placeholder for each. Dialects call Arg to bind a value. It also
 // records which join keys were referenced by conditions that actually emitted.

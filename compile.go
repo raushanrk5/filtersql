@@ -236,12 +236,21 @@ func resolveScalar(q *Query, f Field, col string, in Condition) (string, error) 
 		if len(vals) == 0 {
 			return "", nil
 		}
+		negate := in.Op == OpNin
+		// Text/enum membership can bind a single array param on dialects that
+		// implement scalarInDialect (Postgres, SQLite), avoiding the per-value
+		// placeholder limit. Others fall back to IN (?, ?, ...).
+		if f.Type == TypeString || f.Type == TypeEnum {
+			if d, ok := q.d.(scalarInDialect); ok {
+				return d.ScalarIn(q, col, vals, negate), nil
+			}
+		}
 		marks := make([]string, len(vals))
 		for i, v := range vals {
 			marks[i] = q.Arg(v)
 		}
 		neg := ""
-		if in.Op == OpNin {
+		if negate {
 			neg = "NOT "
 		}
 		return fmt.Sprintf("%s %sIN (%s)", col, neg, strings.Join(marks, ", ")), nil

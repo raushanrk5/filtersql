@@ -159,6 +159,20 @@ func TestPostgres_NullAndKeyset(t *testing.T) {
 	}
 }
 
+func TestPostgres_ScalarInAnyExecutes(t *testing.T) {
+	db := pgSetup(t)
+	// String _in binds one text[] param (= ANY) — no per-value placeholders.
+	where, args, err := pgReg.Compile(fq.Postgres{}, []fq.Condition{
+		{Key: "name", Op: fq.OpIn, Values: []any{"web-01", "web-02"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := pgIDs(t, db, "SELECT id FROM asset WHERE "+where+" ORDER BY id", args)
+	if want := []string{"a1", "a2"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v (where: %s)", got, want, where)
+	}
+}
+
 func TestPostgres_BuilderContinuity(t *testing.T) {
 	db := pgSetup(t)
 	// Combine a filter WHERE and a keyset seek in one Postgres query — this is

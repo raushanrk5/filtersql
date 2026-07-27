@@ -406,6 +406,26 @@ total, err := assets.Select(dialect).Scope(scope).Where(filters).Count(ctx, db)
 
 Every user-supplied value is a bound argument — nothing is string-interpolated into SQL. `_like` escapes `%` and `_` so a literal value can't inject a pattern; array/map literals are escaped per dialect. The engine is injection-safe at its boundary.
 
+## Scale safety
+
+**Guardrails.** Bound how complex a caller's filter may be, so an abusive payload fails fast with `ErrTooComplex` (a 400) instead of compiling into a pathological query:
+
+```go
+lim := filtersql.Limits{MaxDepth: 6, MaxConditions: 40, MaxValues: 500}
+where, args, err := reg.CompileWithLimits(dialect, filters, lim)
+// or lim.Check(filters) at the edge before doing anything
+```
+
+**Array-bound `_in`.** A string/enum `_in` with a large value list would blow past the per-query placeholder limit (Postgres caps at 65,535). On dialects that support it, membership binds a *single* array/JSON parameter instead:
+
+```
+Postgres  name = ANY($1::text[])                          -- one param, any list size
+SQLite    name IN (SELECT value FROM json_each(?))
+others    name IN (?, ?, …)                               -- classic fallback
+```
+
+This is a non-breaking optional-interface upgrade — dialects that don't implement it keep the classic `IN` list.
+
 ## Testing
 
 The root module has zero dependencies and is unit-tested with string assertions. The `integration/` directory is a **separate module** (so its driver never enters the library's dependency graph) that runs the generated SQL against a real in-memory SQLite database, asserting on actual result rows — filtering, JSON array containment, keyset paging, and HAVING:

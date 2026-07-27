@@ -55,6 +55,16 @@ func (Postgres) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
 	return stdOrderTerm(expr, desc, nulls)
 }
 
+// ScalarIn binds one text[] param, so a large _in list can't blow the 65535
+// parameter limit. col = ANY($1::text[]) / col <> ALL($1::text[]).
+func (Postgres) ScalarIn(q *Query, col string, values []string, negate bool) string {
+	arg := q.Arg(pgTextArray(values))
+	if negate {
+		return fmt.Sprintf("%s <> ALL(%s::text[])", col, arg)
+	}
+	return fmt.Sprintf("%s = ANY(%s::text[])", col, arg)
+}
+
 func (Postgres) Now() string { return "now()" }
 
 func (Postgres) RelativeTime(amount int, unit TimeUnit) string {

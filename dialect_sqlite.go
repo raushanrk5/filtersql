@@ -82,6 +82,16 @@ func (SQLite) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
 	return stdOrderTerm(expr, desc, nulls)
 }
 
+// ScalarIn binds one JSON-array param and expands it with json_each, so a large
+// _in list uses a single placeholder instead of one per value.
+func (SQLite) ScalarIn(q *Query, col string, values []string, negate bool) string {
+	kw := "IN"
+	if negate {
+		kw = "NOT IN"
+	}
+	return fmt.Sprintf("%s %s (SELECT value FROM json_each(%s))", col, kw, q.Arg(jsonArrayLiteral(values)))
+}
+
 func (SQLite) Now() string { return "datetime('now')" }
 
 func (SQLite) RelativeTime(amount int, unit TimeUnit) string {

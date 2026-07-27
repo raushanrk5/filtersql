@@ -119,6 +119,12 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		limit = 20 // sane default / ceiling
 	}
 
+	// Reject abusive payloads up front (ErrTooComplex -> 400) before compiling.
+	if err := (fq.Limits{MaxDepth: 6, MaxConditions: 40, MaxValues: 500}).Check(req.Filters); err != nil {
+		writeErr(w, err)
+		return
+	}
+
 	// Keyset needs a unique, stable sort suffix — append id if the caller didn't.
 	sort := req.Sort
 	if !hasSortKey(sort, "id") {
@@ -251,7 +257,8 @@ func writeErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, fq.ErrUnknownField),
 		errors.Is(err, fq.ErrBadOperator),
 		errors.Is(err, fq.ErrBadValue),
-		errors.Is(err, fq.ErrInvalidCondition):
+		errors.Is(err, fq.ErrInvalidCondition),
+		errors.Is(err, fq.ErrTooComplex):
 		writeJSON(w, http.StatusBadRequest, errBody(err.Error()))
 	default:
 		log.Printf("internal error: %v", err)
