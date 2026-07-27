@@ -32,22 +32,6 @@ func (f AggFunc) needsMetric() bool {
 	return false
 }
 
-// aggCall renders the SQL for an aggregate. countAll is the dialect's "count all
-// rows" form used when fn is Count with no expr.
-func aggCall(fn AggFunc, expr, countAll string) string {
-	switch fn {
-	case Count:
-		if expr == "" {
-			return countAll
-		}
-		return "count(" + expr + ")"
-	case CountDistinct:
-		return "count(DISTINCT " + expr + ")"
-	default: // Sum, Avg, Min, Max — the const value is the SQL function name
-		return string(fn) + "(" + expr + ")"
-	}
-}
-
 // Aggregation describes a GROUP BY aggregation over the filtered rows.
 type Aggregation struct {
 	GroupBy string  // field key to group by; empty = a single scalar aggregate (no GROUP BY)

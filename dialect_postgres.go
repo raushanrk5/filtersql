@@ -85,13 +85,3 @@ func (Postgres) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string {
 	}
 	return strings.Join(parts, " AND ")
 }
-
-// pgTextArray formats a Go slice as a Postgres text-array literal. Values are
-// escaped so they cannot break out of the literal.
-func pgTextArray(vals []string) string {
-	quoted := make([]string, len(vals))
-	for i, v := range vals {
-		quoted[i] = `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v) + `"`
-	}
-	return "{" + strings.Join(quoted, ",") + "}"
-}

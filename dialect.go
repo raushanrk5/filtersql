@@ -49,38 +49,6 @@ type Dialect interface {
 	RelativeTime(amount int, unit TimeUnit) string
 }
 
-// likeNeedle escapes the pattern's wildcards and wraps it for the requested
-// anchoring: substring (%x%), prefix (x%), or suffix (%x). Shared by dialects.
-func likeNeedle(pattern string, m LikeMatch) string {
-	p := escapeLike(pattern)
-	switch m {
-	case MatchPrefix:
-		return p + "%"
-	case MatchSuffix:
-		return "%" + p
-	default:
-		return "%" + p + "%"
-	}
-}
-
-// stdOrderTerm renders a standard-SQL ORDER BY term with native NULLS FIRST/LAST.
-// Shared by dialects that support that syntax.
-func stdOrderTerm(expr string, desc bool, nulls NullsOrder) string {
-	s := expr
-	if desc {
-		s += " DESC"
-	} else {
-		s += " ASC"
-	}
-	switch nulls {
-	case NullsFirst:
-		s += " NULLS FIRST"
-	case NullsLast:
-		s += " NULLS LAST"
-	}
-	return s
-}
-
 // scalarInDialect is an optional Dialect upgrade: when a dialect implements it,
 // membership (_in / _nin) on string/enum fields binds a single array/JSON
 // parameter instead of one placeholder per value — sidestepping the database's

@@ -67,9 +67,3 @@ func (ClickHouse) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string
 	}
 	return strings.Join(parts, " AND ")
 }
-
-// escapeLike escapes LIKE wildcards so a literal value can't inject patterns.
-func escapeLike(s string) string {
-	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	return r.Replace(s)
-}

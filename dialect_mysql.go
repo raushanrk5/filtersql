@@ -1,7 +1,6 @@
 package filtersql
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -96,16 +95,4 @@ func (MySQL) RelativeTime(amount int, unit TimeUnit) string {
 	}
 	kw := map[TimeUnit]string{Minute: "MINUTE", Hour: "HOUR", Day: "DAY", Week: "WEEK"}[unit]
 	return fmt.Sprintf("NOW() %s INTERVAL %d %s", op, amount, kw)
-}
-
-// jsonArrayLiteral renders values as a JSON array literal, e.g. ["a","b"].
-func jsonArrayLiteral(vals []string) string {
-	b, _ := json.Marshal(vals)
-	return string(b)
-}
-
-// jsonPath renders a JSON path to a top-level key, e.g. $."env".
-func jsonPath(key string) string {
-	esc := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(key)
-	return `$."` + esc + `"`
 }
