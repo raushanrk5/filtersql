@@ -55,6 +55,17 @@ func (Postgres) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
 	return stdOrderTerm(expr, desc, nulls)
 }
 
+func (Postgres) Now() string { return "now()" }
+
+func (Postgres) RelativeTime(amount int, unit TimeUnit) string {
+	op := "+"
+	if amount < 0 {
+		op, amount = "-", -amount
+	}
+	kw := map[TimeUnit]string{Minute: "minutes", Hour: "hours", Day: "days", Week: "weeks"}[unit]
+	return fmt.Sprintf("now() %s interval '%d %s'", op, amount, kw)
+}
+
 func (Postgres) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string {
 	var parts []string
 	for _, p := range pairs {

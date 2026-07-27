@@ -40,6 +40,13 @@ type Dialect interface {
 	// ClickHouse/Postgres/SQLite support "NULLS FIRST|LAST" natively; a dialect
 	// without it (MySQL) emulates via a leading "expr IS NULL" term.
 	OrderTerm(expr string, desc bool, nulls NullsOrder) string
+
+	// Now renders the current-timestamp expression (now(), datetime('now'), …).
+	Now() string
+	// RelativeTime renders "now shifted by amount of unit"; a negative amount is
+	// in the past. amount is a validated integer and unit a fixed keyword, so the
+	// result is safe to inline. e.g. Postgres now() - interval '7 days'.
+	RelativeTime(amount int, unit TimeUnit) string
 }
 
 // likeNeedle escapes the pattern's wildcards and wraps it for the requested

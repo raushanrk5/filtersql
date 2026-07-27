@@ -277,7 +277,8 @@ func resolveBool(q *Query, col string, in Condition) (string, error) {
 }
 
 func resolveTimestamp(q *Query, col string, in Condition) (string, error) {
-	if in.Op == OpBetween {
+	switch in.Op {
+	case OpBetween:
 		if len(in.Values) != 2 {
 			return "", fmt.Errorf("%w: _between needs exactly 2 values, got %d", ErrBadValue, len(in.Values))
 		}
@@ -290,12 +291,61 @@ func resolveTimestamp(q *Query, col string, in Condition) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("%s BETWEEN %s AND %s", col, q.Arg(lo), q.Arg(hi)), nil
+
+	case OpLast, OpWithin:
+		iv, err := toString(first(in.Values))
+		if err != nil {
+			return "", err
+		}
+		n, unit, err := parseInterval(iv)
+		if err != nil {
+			return "", err
+		}
+		// _last: [now-N, now]; _within: [now, now+N]. The amount is a validated
+		// int and the unit a fixed keyword, so the time expressions are inlined.
+		if in.Op == OpLast {
+			return fmt.Sprintf("%s BETWEEN %s AND %s", col, q.d.RelativeTime(-n, unit), q.d.Now()), nil
+		}
+		return fmt.Sprintf("%s BETWEEN %s AND %s", col, q.d.Now(), q.d.RelativeTime(n, unit)), nil
 	}
+
 	v, err := toString(first(in.Values))
 	if err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("%s %s %s", col, sqlCmp[in.Op], q.Arg(v)), nil
+}
+
+// parseInterval parses a compact relative-time interval like "7d", "24h",
+// "30m", "2w" into an amount and unit. Values are validated (positive integer +
+// known unit) so the caller can safely inline them.
+func parseInterval(s string) (int, TimeUnit, error) {
+	s = strings.TrimSpace(s)
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 || i == len(s) {
+		return 0, 0, fmt.Errorf("%w: bad interval %q (want e.g. 7d, 24h, 30m, 2w)", ErrBadValue, s)
+	}
+	n, err := strconv.Atoi(s[:i])
+	if err != nil || n <= 0 {
+		return 0, 0, fmt.Errorf("%w: interval amount must be a positive integer: %q", ErrBadValue, s)
+	}
+	var u TimeUnit
+	switch s[i:] {
+	case "m":
+		u = Minute
+	case "h":
+		u = Hour
+	case "d":
+		u = Day
+	case "w":
+		u = Week
+	default:
+		return 0, 0, fmt.Errorf("%w: unknown interval unit in %q (use m/h/d/w)", ErrBadValue, s)
+	}
+	return n, u, nil
 }
 
 func resolveArray(q *Query, col string, in Condition) (string, error) {

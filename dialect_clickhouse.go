@@ -47,6 +47,17 @@ func (ClickHouse) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
 	return stdOrderTerm(expr, desc, nulls)
 }
 
+func (ClickHouse) Now() string { return "now()" }
+
+func (ClickHouse) RelativeTime(amount int, unit TimeUnit) string {
+	op := "+"
+	if amount < 0 {
+		op, amount = "-", -amount
+	}
+	kw := map[TimeUnit]string{Minute: "MINUTE", Hour: "HOUR", Day: "DAY", Week: "WEEK"}[unit]
+	return fmt.Sprintf("now() %s INTERVAL %d %s", op, amount, kw)
+}
+
 func (ClickHouse) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string {
 	var parts []string
 	for _, p := range pairs {

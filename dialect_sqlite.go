@@ -81,3 +81,23 @@ func (SQLite) Aggregate(fn AggFunc, expr string) string {
 func (SQLite) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
 	return stdOrderTerm(expr, desc, nulls)
 }
+
+func (SQLite) Now() string { return "datetime('now')" }
+
+func (SQLite) RelativeTime(amount int, unit TimeUnit) string {
+	// SQLite datetime modifiers have no 'weeks' — express weeks as days.
+	mod := "days"
+	switch unit {
+	case Minute:
+		mod = "minutes"
+	case Hour:
+		mod = "hours"
+	case Week:
+		amount *= 7
+	}
+	sign := "+"
+	if amount < 0 {
+		sign, amount = "-", -amount
+	}
+	return fmt.Sprintf("datetime('now', '%s%d %s')", sign, amount, mod)
+}

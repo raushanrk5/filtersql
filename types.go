@@ -43,6 +43,8 @@ const (
 	OpLt         Operator = "_lt"
 	OpLte        Operator = "_lte"
 	OpBetween    Operator = "_between" // inclusive range: exactly [lo, hi]
+	OpLast       Operator = "_last"    // timestamps in the last N (e.g. "7d"): BETWEEN now-N AND now
+	OpWithin     Operator = "_within"  // timestamps in the next N: BETWEEN now AND now+N
 
 	OpContains       Operator = "_contains"     // array ⊇ all values
 	OpContainsAny    Operator = "_contains_any" // array ∩ values ≠ ∅
@@ -83,7 +85,7 @@ var typeOperators = map[Type][]Operator{
 	TypeInt:       {OpEq, OpNe, OpIn, OpNin, OpGt, OpGte, OpLt, OpLte, OpBetween},
 	TypeFloat:     {OpEq, OpNe, OpIn, OpNin, OpGt, OpGte, OpLt, OpLte, OpBetween},
 	TypeBool:      {OpEq, OpNe},
-	TypeTimestamp: {OpEq, OpGt, OpGte, OpLt, OpLte, OpBetween},
+	TypeTimestamp: {OpEq, OpGt, OpGte, OpLt, OpLte, OpBetween, OpLast, OpWithin},
 	TypeEnum:      {OpEq, OpNe, OpIn, OpNin},
 	TypeArray:     {OpContains, OpContainsAny, OpNotContains, OpNotContainsAny},
 	TypeMap:       {OpHasKeys, OpNotHasKeys, OpHasKeyValues, OpNotHasKeyValues},
@@ -97,6 +99,16 @@ const (
 	MatchSubstring LikeMatch = iota
 	MatchPrefix
 	MatchSuffix
+)
+
+// TimeUnit is the unit of a relative-time interval (_last / _within).
+type TimeUnit int
+
+const (
+	Minute TimeUnit = iota
+	Hour
+	Day
+	Week
 )
 
 // Operators returns the operators supported by a Type, or nil if unknown.

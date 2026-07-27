@@ -253,12 +253,12 @@ Ships with `ClickHouse{}`, `Postgres{}`, and `SQLite{}` (SQLite stores arrays/ma
 | `id`, `enum` | `_eq` `_ne` `_in` `_nin` |
 | `int`, `float` | `_eq` `_ne` `_in` `_nin` `_gt` `_gte` `_lt` `_lte` `_between` |
 | `bool` | `_eq` `_ne` |
-| `timestamp` | `_eq` `_gt` `_gte` `_lt` `_lte` `_between` |
+| `timestamp` | `_eq` `_gt` `_gte` `_lt` `_lte` `_between` `_last` `_within` |
 | `array` | `_contains` `_contains_any` `_not_contains` `_not_contains_any` |
 | `map` | `_has_keys` `_not_has_keys` `_has_key_values` `_not_has_key_values` |
 | *any `Nullable` field* | `_is_null` `_is_not_null` (no value) |
 
-`_between` takes exactly two values `[lo, hi]` (inclusive). An operator illegal for a field's type is a compile error, not silent wrong SQL.
+`_between` takes exactly two values `[lo, hi]` (inclusive). `_last` / `_within` take a compact interval — `"7d"`, `"24h"`, `"30m"`, `"2w"` — and render dialect-specific date math (`_last "7d"` → `col BETWEEN now()-7d AND now()`); the amount is parsed to a validated integer, so nothing user-typed reaches the SQL. An operator illegal for a field's type is a compile error, not silent wrong SQL.
 
 **Per-field operator overrides.** Narrow a field to a subset of its type's operators — an allowlist (`Only`) or a denylist (`Except`). Both `Schema()` and execution read the same narrowed set, so they stay consistent:
 
