@@ -72,3 +72,20 @@ func TestTyped_ExecuteScanAndPage(t *testing.T) {
 		t.Errorf("expected no next cursor, got %q", next2)
 	}
 }
+
+func TestTyped_Count(t *testing.T) {
+	db := setup(t)
+	tt := fq.For[asset](typedReg, "asset")
+	// 3 ACTIVE assets (a1, a2, a4). Count ignores sort/limit/cursor.
+	n, err := tt.Select(fq.SQLite{}).
+		Where([]fq.Condition{{Key: "status", Op: fq.OpEq, Values: []any{"ACTIVE"}}}).
+		Sort([]fq.Sort{{Key: "severity", Desc: true}}).
+		Limit(2).
+		Count(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Errorf("count = %d, want 3", n)
+	}
+}

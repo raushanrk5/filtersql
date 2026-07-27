@@ -40,6 +40,8 @@ var assetFilters = fq.Registry{
 	"severity": {Type: fq.TypeInt, Column: "severity", Sortable: true},
 	"owner":    {Type: fq.TypeString, Column: "owner", Nullable: true},
 	"tags":     {Type: fq.TypeArray, Column: "tags"},
+	// A virtual "search box" field spanning several columns, kept out of the schema.
+	"q": {Type: fq.TypeString, SearchCols: []string{"name", "owner"}, Hidden: true},
 }
 
 // demoTenant stands in for the tenant id you would pull from auth/JWT on each
@@ -101,6 +103,7 @@ type searchReq struct {
 
 type searchResp struct {
 	Rows       []asset `json:"rows"`
+	Total      int64   `json:"total"` // total matching the filter set (for "N of M")
 	NextCursor string  `json:"next_cursor,omitempty"`
 }
 
@@ -168,8 +171,16 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Build the next cursor from the last returned row's sort values.
-	resp := searchResp{Rows: rows}
+	// 5. Total count over the SAME filter set (no pagination) — a fresh builder,
+	// reusing req.Filters so the count and the page agree.
+	total, err := s.countMatching(req.Filters)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	// 6. Build the next cursor from the last returned row's sort values.
+	resp := searchResp{Rows: rows, Total: total}
 	if len(rows) > limit {
 		resp.Rows = rows[:limit]
 		last := resp.Rows[len(resp.Rows)-1]
@@ -178,6 +189,23 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// countMatching runs SELECT count(*) over the same tenant + filters as the page.
+func (s *server) countMatching(filters []fq.Condition) (int64, error) {
+	b := assetFilters.Builder(dialect)
+	tenantPH := b.Arg(demoTenant)
+	where, err := b.Where(filters)
+	if err != nil {
+		return 0, err
+	}
+	q := "SELECT count(*) FROM asset WHERE tenant_id = " + tenantPH
+	if where != "" {
+		q += " AND " + where
+	}
+	var n int64
+	err = s.db.QueryRow(q, b.Args()...).Scan(&n)
+	return n, err
 }
 
 // --- helpers ---

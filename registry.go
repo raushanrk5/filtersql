@@ -40,7 +40,18 @@ type Field struct {
 	// expression (e.g. count(), sum(f.score)) filtered after GROUP BY. Implies Raw
 	// (aggregate expressions are never quoted). Routed by CompileWhereHaving.
 	Having bool
-	Joins  []string // join keys this field needs; each names a Join in the Joins map
+	// SearchCols makes this a virtual "search box" field: instead of one Column,
+	// a filter on it expands to an OR across these columns, each resolved with
+	// the same operator (e.g. SearchCols {"a.name","a.email"} + _like "x" ->
+	// (a.name ILIKE ? OR a.email ILIKE ?)). Mutually exclusive with Column; pair
+	// with Hidden to keep it out of the schema's regular field list.
+	SearchCols []string
+	// Transform normalizes each value before binding (e.g. Lower(), Trim()).
+	Transform Transformer
+	// Validate rejects invalid values before binding (e.g. MaxLen(255)); a
+	// failure surfaces as ErrBadValue.
+	Validate Validator
+	Joins    []string // join keys this field needs; each names a Join in the Joins map
 	// passed to CompileWithJoins / ProjectWithJoins. A join is emitted only when a
 	// filter on this field actually resolves (WHERE) or the field is projected.
 }
@@ -97,11 +108,16 @@ func (f Field) schemaOperators() []Operator { return f.effectiveOperators() }
 // whereExpr renders the WHERE-side reference. A plain identifier is quoted by
 // the dialect; a raw expression (Raw, or a Having aggregate) passes through.
 func (f Field) whereExpr(d Dialect, key string) string {
-	c := f.column(key)
+	return f.quote(d, f.column(key))
+}
+
+// quote renders one column reference for this field: raw pass-through for a Raw
+// or Having field, otherwise a dialect-quoted identifier.
+func (f Field) quote(d Dialect, col string) string {
 	if f.Raw || f.Having {
-		return c
+		return col
 	}
-	return d.QuoteIdent(c)
+	return d.QuoteIdent(col)
 }
 
 // selectExpr is the SELECT / ORDER BY / GROUP BY reference: ValueExpr (always a

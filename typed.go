@@ -269,6 +269,42 @@ func (s *TypedSelect[T]) All(ctx context.Context, db Querier) ([]T, string, erro
 	return out, next, nil
 }
 
+// Count returns the total number of rows matching Scope + Where, ignoring Sort,
+// After, and Limit — for "showing 1–20 of 340" pagination UIs. It reuses the
+// exact filter set of the page query, so the count and the page can't disagree.
+func (s *TypedSelect[T]) Count(ctx context.Context, db Querier) (int64, error) {
+	b := s.t.reg.Builder(s.d)
+	var where []string
+	if s.scopeFn != nil {
+		if p := s.scopeFn(b); p != "" {
+			where = append(where, p)
+		}
+	}
+	filt, err := b.Where(s.conds)
+	if err != nil {
+		return 0, err
+	}
+	if filt != "" {
+		where = append(where, filt)
+	}
+	query := "SELECT count(*) FROM " + s.t.table
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	rs, err := db.QueryContext(ctx, query, b.Args()...)
+	if err != nil {
+		return 0, err
+	}
+	defer rs.Close()
+	var n int64
+	if rs.Next() {
+		if err := rs.Scan(&n); err != nil {
+			return 0, err
+		}
+	}
+	return n, rs.Err()
+}
+
 // cursorFor reads the sort-key values off the last row to form the next cursor.
 // Returns nil (no cursor) if a sort key's column isn't a scannable struct field.
 func (s *TypedSelect[T]) cursorFor(v T) Cursor {
@@ -288,3 +324,11 @@ func (s *TypedSelect[T]) cursorFor(v T) Cursor {
 	}
 	return c
 }
+
+// Ergonomics / real-world patterns
+
+// Multi-field search field — a virtual field that expands to (name ILIKE ? OR description ILIKE ? OR id ILIKE ?), so a single "search box" input hits several columns. Extremely common; I have prior art from the original design. Practical and self-contained.
+// Total-count helper — pagination UIs want "showing 1–20 of 340"; a helper to produce the COUNT(*) query for the same filter set (minus limit/sort). Natural companion to what we built.
+// Extensibility
+
+// Value transformers & validators — per-field Transform func(any)(any,error) (lowercase, trim, parse dates, canonicalize) and Validate (regex, min/max, length) hooks that run before binding. Unlocks a lot without bloating the core.

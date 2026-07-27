@@ -128,6 +128,8 @@ func parseFilterTag(sf reflect.StructField, tag string) (string, Field, error) {
 			f.Enum = strings.Split(val, "|")
 		case "joins":
 			f.Joins = strings.Split(val, "|")
+		case "search":
+			f.SearchCols = strings.Split(val, "|")
 		case "only":
 			f.Only = parseOperatorList(val)
 		case "except":

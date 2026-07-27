@@ -111,6 +111,27 @@ func TestSearch_FilterSortAndKeysetPaging(t *testing.T) {
 	}
 }
 
+func TestSearch_MultiFieldAndTotal(t *testing.T) {
+	s := newTestServer(t)
+	// q spans name+owner; "web" matches web-01 (a1) and web-02 (a2).
+	resp := search(t, s, `{"filters":[{"key":"q","op":"_like","values":["web"]}]}`)
+	if got := ids(resp.Rows); got != "a1,a2" {
+		t.Errorf("search rows = %q, want a1,a2", got)
+	}
+	if resp.Total != 2 {
+		t.Errorf("total = %d, want 2", resp.Total)
+	}
+
+	// Total reflects the filter set regardless of page size.
+	page := search(t, s, `{"filters":[{"key":"status","op":"_eq","values":["ACTIVE"]}],"limit":1}`)
+	if resp := len(page.Rows); resp != 1 {
+		t.Errorf("page rows = %d, want 1", resp)
+	}
+	if page.Total != 3 {
+		t.Errorf("total = %d, want 3 (ACTIVE assets)", page.Total)
+	}
+}
+
 func TestSearch_UnknownFieldIs400(t *testing.T) {
 	s := newTestServer(t)
 	rec := httptest.NewRecorder()

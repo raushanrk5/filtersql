@@ -269,6 +269,30 @@ Ships with `ClickHouse{}`, `Postgres{}`, and `SQLite{}` (SQLite stores arrays/ma
 
 In struct tags: `filter:"body,only=_eq"` / `filter:"name,except=_like"`.
 
+## Multi-field search
+
+A "search box" input usually needs to hit several columns at once. A `SearchCols` field is virtual — no single `Column` — and expands to an OR across the columns, each resolved with the same operator:
+
+```go
+"q": {Type: filtersql.TypeString, SearchCols: []string{"a.name", "a.email"}, Hidden: true}
+// {key:"q", op:"_like", values:["web"]}
+// -> (a.name ILIKE ? OR a.email ILIKE ?)
+```
+
+Pair with `Hidden` to keep it out of the schema's field list. Struct tag: `filter:"q,search=a.name|a.email,hidden"`.
+
+## Value transformers & validators
+
+Per-field hooks run on every value before it is bound: `Transform` normalizes (lowercase, trim, parse), `Validate` rejects (a failure is `ErrBadValue`).
+
+```go
+{Type: filtersql.TypeString, Column: "a.email",
+    Transform: filtersql.Lower(),        // Foo@BAR -> foo@bar, on every value incl. _in lists
+    Validate:  filtersql.MaxLen(320)}
+```
+
+Built-ins: `Lower()`, `Trim()`, `MaxLen(n)`, `MinLen(n)`, `Matches(re)` — or supply your own `func(any)(any,error)` / `func(any)error`.
+
 ## HAVING — filtering on aggregates
 
 Mark a field `Having: true` and its `Column` is treated as an aggregate expression filtered after `GROUP BY`. `CompileWhereHaving` splits two filter lists and — crucially — shares one placeholder counter so `$N` numbering stays continuous across the clause boundary:
@@ -369,6 +393,12 @@ page, next, err := assets.Select(dialect).
 ```
 
 Rendering is deferred and always ordered (scope → WHERE → seek), so method call order never affects placeholder numbering. `ScanAll[T]` / `ScanOne[T]` are also exported for scanning arbitrary `*sql.Rows`. This layer uses only `database/sql` from the standard library — **still no third-party dependencies.**
+
+For "showing 1–20 of 340" UIs, `.Count(ctx, db)` runs the same filter set without sort/limit/cursor, so the total and the page can't disagree:
+
+```go
+total, err := assets.Select(dialect).Scope(scope).Where(filters).Count(ctx, db)
+```
 
 ## Safety
 

@@ -142,8 +142,21 @@ func (r Registry) renderLeaf(q *Query, c Condition) (string, error) {
 	if !f.allows(c.Op) {
 		return "", fmt.Errorf("%w: %q on %s field %q", ErrBadOperator, c.Op, f.Type, c.Key)
 	}
-	col := f.whereExpr(q.d, c.Key)
-	cond, err := resolve(q, f, col, c)
+
+	// Transform / validate each value before it is resolved and bound.
+	if vals, err := f.applyHooks(c.Values); err != nil {
+		return "", fmt.Errorf("field %q: %w", c.Key, err)
+	} else {
+		c.Values = vals
+	}
+
+	var cond string
+	var err error
+	if len(f.SearchCols) > 0 {
+		cond, err = resolveSearch(q, f, c) // virtual multi-column search field
+	} else {
+		cond, err = resolve(q, f, f.whereExpr(q.d, c.Key), c)
+	}
 	if err != nil {
 		// Past the allows() gate, any resolve failure is value-domain (coercion
 		// or enum), so surface it as ErrBadValue for callers that branch on it.
@@ -155,6 +168,29 @@ func (r Registry) renderLeaf(q *Query, c Condition) (string, error) {
 		}
 	}
 	return cond, nil
+}
+
+// resolveSearch expands a SearchCols field into an OR across its columns, each
+// resolved with the same operator so semantics (e.g. _like's %-wrapping) match.
+func resolveSearch(q *Query, f Field, in Condition) (string, error) {
+	var parts []string
+	for _, sc := range f.SearchCols {
+		sql, err := resolve(q, f, f.quote(q.d, sc), in)
+		if err != nil {
+			return "", err
+		}
+		if sql != "" {
+			parts = append(parts, sql)
+		}
+	}
+	switch len(parts) {
+	case 0:
+		return "", nil
+	case 1:
+		return parts[0], nil
+	default:
+		return "(" + strings.Join(parts, " OR ") + ")", nil
+	}
 }
 
 func resolve(q *Query, f Field, col string, in Condition) (string, error) {
