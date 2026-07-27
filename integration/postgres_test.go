@@ -159,6 +159,31 @@ func TestPostgres_NullAndKeyset(t *testing.T) {
 	}
 }
 
+func TestPostgres_BuilderContinuity(t *testing.T) {
+	db := pgSetup(t)
+	// Combine a filter WHERE and a keyset seek in one Postgres query — this is
+	// the case where separate compiles would collide on $1. The Builder shares
+	// the counter so $N stays continuous and the args line up.
+	b := pgReg.Builder(fq.Postgres{})
+	where, err := b.Where([]fq.Condition{{Key: "status", Op: fq.OpEq, Values: []any{"ACTIVE"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort := []fq.Sort{{Key: "severity", Desc: true}, {Key: "id"}}
+	seek, err := b.Keyset(sort, fq.Cursor{"severity": 9, "id": "a1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, _ := b.OrderBy(sort)
+
+	query := "SELECT id FROM asset WHERE " + where + " AND " + seek + " ORDER BY " + order
+	got := pgIDs(t, db, query, b.Args())
+	// ACTIVE, severity < 9 -> a4(7), a2(5)
+	if want := []string{"a4", "a2"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v (query: %s)", got, want, query)
+	}
+}
+
 func TestPostgres_Having(t *testing.T) {
 	db := pgSetup(t)
 	_, having, args, _ := pgReg.CompileWhereHaving(fq.Postgres{}, nil,

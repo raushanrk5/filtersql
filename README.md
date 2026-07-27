@@ -324,6 +324,27 @@ default:
 }
 ```
 
+## Assembling a statement — the `Builder`
+
+`Compile`, `KeysetWhere`, and `CompileWhereHaving` each start their own placeholder counter. Combining a filter WHERE *and* a keyset seek by hand is therefore safe for `?`-dialects but **breaks on Postgres** — both restart at `$1` and the args misalign. The `Builder` threads **one** counter through every fragment:
+
+```go
+b := reg.Builder(filtersql.Postgres{})
+tenant := b.Arg(tenantID)          // $1  — your own tenant scoping shares the numbering
+where, _ := b.Where(filters)       // $2 …
+seek, _  := b.Keyset(sort, cursor) // continues …
+order, _ := b.OrderBy(sort)
+page, _  := b.Limit(50, 0)
+
+sql := "SELECT id FROM asset WHERE tenant_id = " + tenant
+if where != "" { sql += " AND " + where }
+if seek  != "" { sql += " AND " + seek }
+sql += " ORDER BY " + order + " " + page
+rows, _ := db.Query(sql, b.Args()...)   // args in matching order
+```
+
+You still own `SELECT`/`FROM` and tenant scoping — the Builder just guarantees the placeholders and args line up. Call the render methods in the order the fragments appear (WHERE parts, then `Having`). The [cookbook](cookbook/) uses it.
+
 ## Safety
 
 Every user-supplied value is a bound argument — nothing is string-interpolated into SQL. `_like` escapes `%` and `_` so a literal value can't inject a pattern; array/map literals are escaped per dialect. The engine is injection-safe at its boundary.

@@ -122,48 +122,47 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		sort = append(sort, fq.Sort{Key: "id"})
 	}
 
-	// 1. WHERE from the caller's filters.
-	where, args, err := assetFilters.Compile(dialect, req.Filters)
+	// A Builder threads ONE placeholder counter through every fragment, so
+	// tenant scoping, WHERE, and the keyset seek all share correct numbering
+	// (essential the day this service points at Postgres instead of SQLite).
+	b := assetFilters.Builder(dialect)
+	tenantPH := b.Arg(demoTenant) // our tenant scoping shares the numbering
+
+	where, err := b.Where(req.Filters)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	// 2. ORDER BY from the caller's sort spec (Sortable-gated).
-	order, err := assetFilters.OrderBy(dialect, sort)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	// 3. Keyset seek predicate from the cursor, built off the SAME sort spec.
 	var seek string
-	var seekArgs []any
 	if req.Cursor != "" {
 		cur, derr := fq.DecodeCursor(req.Cursor)
 		if derr != nil {
 			writeJSON(w, http.StatusBadRequest, errBody("invalid cursor"))
 			return
 		}
-		if seek, seekArgs, err = assetFilters.KeysetWhere(dialect, sort, cur); err != nil {
+		if seek, err = b.Keyset(sort, cur); err != nil {
 			writeErr(w, err)
 			return
 		}
 	}
+	order, err := b.OrderBy(sort)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 
-	// 4. Assemble into OUR base query. Tenant scoping is ours to enforce.
-	query := "SELECT id, name, status, severity, owner FROM asset WHERE tenant_id = ?"
-	all := []any{demoTenant}
+	// Assemble into OUR base query. Tenant scoping is ours to enforce.
+	query := "SELECT id, name, status, severity, owner FROM asset WHERE tenant_id = " + tenantPH
 	if where != "" {
 		query += " AND " + where
-		all = append(all, args...)
 	}
 	if seek != "" {
 		query += " AND " + seek
-		all = append(all, seekArgs...)
 	}
 	query += " ORDER BY " + order
 	query += fmt.Sprintf(" LIMIT %d", limit+1) // fetch one extra to detect "more"
 
-	rows, err := scanAssets(s.db, query, all)
+	rows, err := scanAssets(s.db, query, b.Args())
 	if err != nil {
 		writeErr(w, err)
 		return

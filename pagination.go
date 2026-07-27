@@ -74,26 +74,36 @@ func DecodeCursor(token string) (Cursor, error) {
 // UNIQUE (add a unique tie-breaker like the primary key as the last sort), or
 // pages can repeat or skip rows.
 func (r Registry) KeysetWhere(d Dialect, sorts []Sort, cur Cursor) (string, []any, error) {
+	q := newQuery(d)
+	sql, err := r.keysetInto(q, sorts, cur)
+	if err != nil {
+		return "", nil, err
+	}
+	return sql, q.Args(), nil
+}
+
+// keysetInto renders the seek predicate against an existing Query, so the
+// Builder can keep its placeholder numbering continuous with the WHERE clause.
+func (r Registry) keysetInto(q *Query, sorts []Sort, cur Cursor) (string, error) {
 	if len(sorts) == 0 || len(cur) == 0 {
-		return "", nil, nil
+		return "", nil
 	}
 
 	exprs := make([]string, len(sorts))
 	for i, s := range sorts {
 		f, ok := r[s.Key]
 		if !ok {
-			return "", nil, fmt.Errorf("%w: %q", ErrUnknownField, s.Key)
+			return "", fmt.Errorf("%w: %q", ErrUnknownField, s.Key)
 		}
 		if !f.Sortable {
-			return "", nil, fmt.Errorf("%w: field %q is not sortable", ErrBadOperator, s.Key)
+			return "", fmt.Errorf("%w: field %q is not sortable", ErrBadOperator, s.Key)
 		}
 		if _, has := cur[s.Key]; !has {
-			return "", nil, fmt.Errorf("cursor missing value for sort key %q", s.Key)
+			return "", fmt.Errorf("cursor missing value for sort key %q", s.Key)
 		}
 		exprs[i] = f.selectExpr(s.Key)
 	}
 
-	q := newQuery(d)
 	ors := make([]string, 0, len(sorts))
 	for i := range sorts {
 		ands := make([]string, 0, i+1)
@@ -107,5 +117,5 @@ func (r Registry) KeysetWhere(d Dialect, sorts []Sort, cur Cursor) (string, []an
 		ands = append(ands, fmt.Sprintf("%s %s %s", exprs[i], cmp, q.Arg(cur[sorts[i].Key])))
 		ors = append(ors, "("+strings.Join(ands, " AND ")+")")
 	}
-	return "(" + strings.Join(ors, " OR ") + ")", q.Args(), nil
+	return "(" + strings.Join(ors, " OR ") + ")", nil
 }
