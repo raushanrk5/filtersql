@@ -199,12 +199,12 @@ Keyset requires non-null, unique sort keys (add a unique tie-breaker like the id
 
 The compiler validates and builds portable SQL; only the genuinely divergent bits — placeholder style, identifier quoting, `LIKE`/`ILIKE`, array containment, map/JSON access — go through a `Dialect`. So the same registry targets different databases:
 
-| | ClickHouse | Postgres |
-|---|---|---|
-| placeholder | `?` | `$1, $2` |
-| `_contains_any` on array | `hasAny(a.tags, ?)` | `"a"."tags" && $1` |
-| `_like` | `ILIKE` (wildcards escaped) | `ILIKE` (wildcards escaped) |
-| map has key/value | `col[?] = ?` | `col ->> ? = ?` |
+| | ClickHouse | Postgres | SQLite |
+|---|---|---|---|
+| placeholder | `?` | `$1, $2` | `?` |
+| `_contains_any` on array | `hasAny(a.tags, ?)` | `"a"."tags" && $1` | `EXISTS (… json_each …)` |
+| `_like` | `ILIKE` (escaped) | `ILIKE` (escaped) | `LIKE … ESCAPE '\'` |
+| map has key/value | `col[?] = ?` | `col ->> ? = ?` | `EXISTS (… json_each …)` |
 
 Adding a dialect is implementing one small interface:
 
@@ -216,10 +216,12 @@ type Dialect interface {
     ArrayContains(q *Query, col string, values []string, all bool) string
     MapHasKeys(q *Query, col string, keys []string) string
     MapHasKeyValues(q *Query, col string, pairs []KeyValue) string
+    Aggregate(fn AggFunc, expr string) string
+    OrderTerm(expr string, desc bool, nulls NullsOrder) string
 }
 ```
 
-Ships with `ClickHouse{}` and `Postgres{}`.
+Ships with `ClickHouse{}`, `Postgres{}`, and `SQLite{}` (SQLite stores arrays/maps as JSON text, queried via `json_each`).
 
 ---
 
@@ -296,10 +298,19 @@ default:
 
 Every user-supplied value is a bound argument — nothing is string-interpolated into SQL. `_like` escapes `%` and `_` so a literal value can't inject a pattern; array/map literals are escaped per dialect. The engine is injection-safe at its boundary.
 
+## Testing
+
+The root module has zero dependencies and is unit-tested with string assertions. The `integration/` directory is a **separate module** (so its driver never enters the library's dependency graph) that runs the generated SQL against a real in-memory SQLite database, asserting on actual result rows — filtering, JSON array containment, keyset paging, and HAVING:
+
+```sh
+go test ./...              # unit tests, no deps
+cd integration && go test  # executing tests against real SQLite
+```
+
 ## Roadmap
 
-- More dialects (MySQL, SQLite)
-- Executing integration tests + injection fuzz test + CI
+- More dialects (MySQL)
+- Postgres executing integration tests + injection fuzz test + CI
 - Per-field operator allow/deny overrides
 - Struct-tag registry generation + HTTP cookbook example
 
