@@ -15,15 +15,9 @@ type Projection struct {
 func (r Registry) Project(key string) (Projection, error) {
 	f, ok := r[key]
 	if !ok {
-		return Projection{}, fmt.Errorf("unknown filter field: %q", key)
+		return Projection{}, fmt.Errorf("%w: %q", ErrUnknownField, key)
 	}
-	expr := f.ValueExpr
-	if expr == "" {
-		expr = f.Column
-	}
-	if expr == "" {
-		expr = key
-	}
+	expr := f.selectExpr(key)
 	joins := make(map[string]bool, len(f.Joins))
 	for _, k := range f.Joins {
 		joins[k] = true

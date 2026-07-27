@@ -24,7 +24,17 @@ type Field struct {
 	Hidden    bool     // resolvable in WHERE but omitted from Schema (virtual fields)
 	Nullable  bool     // when true, the field also accepts _is_null / _is_not_null
 	Sortable  bool     // when true, the field may appear in OrderBy (and Schema advertises it)
-	Joins     []string // join keys this field needs; each names a Join in the Joins map
+	// Raw marks Column as a raw SQL expression rather than a plain identifier, so
+	// it is passed through verbatim instead of being quoted by the dialect. Set it
+	// whenever Column is a function/CASE expression (e.g. if(a.active,'Yes','No')):
+	// without it, a dialect like Postgres would quote the whole expression as one
+	// identifier and mangle it.
+	Raw bool
+	// Having marks this field as a HAVING-clause field: Column is an aggregate
+	// expression (e.g. count(), sum(f.score)) filtered after GROUP BY. Implies Raw
+	// (aggregate expressions are never quoted). Routed by CompileWhereHaving.
+	Having bool
+	Joins  []string // join keys this field needs; each names a Join in the Joins map
 	// passed to CompileWithJoins / ProjectWithJoins. A join is emitted only when a
 	// filter on this field actually resolves (WHERE) or the field is projected.
 }
@@ -48,10 +58,23 @@ func (f Field) schemaOperators() []Operator {
 	return ops
 }
 
-// sortExpr is the expression used for ORDER BY / keyset comparisons: ValueExpr,
-// else Column, else the key. Kept identical between OrderBy and KeysetWhere so
-// the sort order and the cursor predicate can never disagree.
-func (f Field) sortExpr(key string) string {
+// whereExpr renders the WHERE-side reference. A plain identifier is quoted by
+// the dialect; a raw expression (Raw, or a Having aggregate) passes through.
+func (f Field) whereExpr(d Dialect, key string) string {
+	c := f.column(key)
+	if f.Raw || f.Having {
+		return c
+	}
+	return d.QuoteIdent(c)
+}
+
+// selectExpr is the SELECT / ORDER BY / GROUP BY reference: ValueExpr (always a
+// raw expression), else Column, else the key. It is intentionally emitted
+// verbatim (not dialect-quoted) because ValueExpr is frequently an expression;
+// for a case-sensitive identifier, quote it yourself in Column/ValueExpr. Kept
+// identical between OrderBy and KeysetWhere so the sort order and the cursor
+// predicate can never disagree.
+func (f Field) selectExpr(key string) string {
 	if f.ValueExpr != "" {
 		return f.ValueExpr
 	}
@@ -107,6 +130,7 @@ type FieldSchema struct {
 	Operators []Operator `json:"operators"`
 	Enum      []string   `json:"enum,omitempty"`
 	Sortable  bool       `json:"sortable,omitempty"`
+	Having    bool       `json:"having,omitempty"` // filters after GROUP BY, not in WHERE
 }
 
 // Schema returns the introspection view of the registry: every non-hidden
@@ -123,6 +147,7 @@ func (r Registry) Schema() []FieldSchema {
 			Operators: f.schemaOperators(),
 			Enum:      f.Enum,
 			Sortable:  f.Sortable,
+			Having:    f.Having,
 		})
 	}
 	sortSchema(out)

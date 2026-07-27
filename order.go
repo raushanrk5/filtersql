@@ -24,12 +24,12 @@ func (r Registry) OrderBy(d Dialect, sorts []Sort) (string, error) {
 	for _, s := range sorts {
 		f, ok := r[s.Key]
 		if !ok {
-			return "", fmt.Errorf("unknown sort field: %q", s.Key)
+			return "", fmt.Errorf("%w: %q", ErrUnknownField, s.Key)
 		}
 		if !f.Sortable {
-			return "", fmt.Errorf("field %q is not sortable", s.Key)
+			return "", fmt.Errorf("%w: field %q is not sortable", ErrBadOperator, s.Key)
 		}
-		terms = append(terms, d.OrderTerm(f.sortExpr(s.Key), s.Desc, s.Nulls))
+		terms = append(terms, d.OrderTerm(f.selectExpr(s.Key), s.Desc, s.Nulls))
 	}
 	return strings.Join(terms, ", "), nil
 }

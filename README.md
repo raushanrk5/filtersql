@@ -237,6 +237,61 @@ Ships with `ClickHouse{}` and `Postgres{}`.
 
 An operator illegal for a field's type is a compile error, not silent wrong SQL.
 
+## HAVING — filtering on aggregates
+
+Mark a field `Having: true` and its `Column` is treated as an aggregate expression filtered after `GROUP BY`. `CompileWhereHaving` splits two filter lists and — crucially — shares one placeholder counter so `$N` numbering stays continuous across the clause boundary:
+
+```go
+reg := filtersql.Registry{
+    "status":        {Type: filtersql.TypeEnum, Column: "a.status"},
+    "finding_count": {Type: filtersql.TypeInt, Column: "count()", Having: true},
+}
+where, having, args, _ := reg.CompileWhereHaving(filtersql.Postgres{},
+    []filtersql.Condition{{Key: "status", Op: filtersql.OpEq, Values: []any{"ACTIVE"}}},
+    []filtersql.Condition{{Key: "finding_count", Op: filtersql.OpGt, Values: []any{5}}})
+// where  = "a"."status" = $1
+// having = count() > $2          <- $2 continues after WHERE's $1
+```
+
+Putting a HAVING field in the `where` list (or vice-versa) is an `ErrInvalidCondition`.
+
+## Raw expressions vs identifiers
+
+`Column` is quoted as an identifier by default. When it's a SQL expression rather than a plain column, set `Raw: true` so it passes through verbatim instead of being mangled by a dialect's identifier quoter:
+
+```go
+{Type: filtersql.TypeBool, Column: "if(a.active,'Yes','No')", Raw: true}
+// Postgres WHERE: if(a.active,'Yes','No') = $1   (not "if(a.active,...)" quoted)
+```
+
+`Having` fields imply `Raw`.
+
+## Validate at boot
+
+Catch registry/join misconfiguration at startup instead of at the first bad request. `Validate` reports *every* problem it finds (unknown types, fields referencing undefined joins, join cycles, `Sortable`+`Having` mixups):
+
+```go
+if err := registry.Validate(joins); err != nil {
+    log.Fatalf("filter registry misconfigured: %v", err)
+}
+```
+
+## Typed errors
+
+Compile-time failures wrap sentinel errors so a handler can map them to status codes — the four request-domain errors mean "the caller's filter is malformed" (400), everything else is a server fault (500):
+
+```go
+switch {
+case errors.Is(err, filtersql.ErrUnknownField),
+     errors.Is(err, filtersql.ErrBadOperator),
+     errors.Is(err, filtersql.ErrBadValue),
+     errors.Is(err, filtersql.ErrInvalidCondition):
+    http.Error(w, err.Error(), http.StatusBadRequest)
+default:
+    http.Error(w, "internal error", http.StatusInternalServerError)
+}
+```
+
 ## Safety
 
 Every user-supplied value is a bound argument — nothing is string-interpolated into SQL. `_like` escapes `%` and `_` so a literal value can't inject a pattern; array/map literals are escaped per dialect. The engine is injection-safe at its boundary.
@@ -245,9 +300,8 @@ Every user-supplied value is a bound argument — nothing is string-interpolated
 
 - More dialects (MySQL, SQLite)
 - Executing integration tests + injection fuzz test + CI
-- `HAVING` support (filter on aggregates)
 - Per-field operator allow/deny overrides
-- Raw-expression vs identifier distinction for `Column`/`ValueExpr` (projection-side quoting)
+- Struct-tag registry generation + HTTP cookbook example
 
 ## License
 

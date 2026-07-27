@@ -1,6 +1,7 @@
 package filtersql
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -40,17 +41,29 @@ func (r Registry) CompileExcluding(d Dialect, conds []Condition, exclude string)
 func (r Registry) compile(d Dialect, conds []Condition, exclude string) (string, []any, map[string]bool, error) {
 	q := newQuery(d)
 	q.exclude = exclude
+	sql, err := r.renderTop(q, conds)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return sql, q.Args(), q.joinKeys, nil
+}
+
+// renderTop renders a top-level AND list against an existing Query (so callers
+// like CompileWhereHaving can share one argument counter across clauses, keeping
+// $N placeholder numbering continuous). Unlike a group, the top level is not
+// parenthesized.
+func (r Registry) renderTop(q *Query, conds []Condition) (string, error) {
 	var parts []string
 	for _, c := range conds {
 		s, err := r.renderCond(q, c)
 		if err != nil {
-			return "", nil, nil, err
+			return "", err
 		}
 		if s != "" {
 			parts = append(parts, s)
 		}
 	}
-	return strings.Join(parts, " AND "), q.Args(), q.joinKeys, nil
+	return strings.Join(parts, " AND "), nil
 }
 
 // renderCond renders one node of the tree. Exactly one form must be set.
@@ -72,7 +85,7 @@ func (r Registry) renderCond(q *Query, c Condition) (string, error) {
 	case forms == 0:
 		return "", nil // empty condition — skip
 	case forms > 1:
-		return "", fmt.Errorf("condition must set exactly one of: key, and, or, not")
+		return "", fmt.Errorf("%w: set exactly one of key, and, or, not", ErrInvalidCondition)
 	case len(c.And) > 0:
 		return r.renderGroup(q, c.And, " AND ")
 	case len(c.Or) > 0:
@@ -124,15 +137,17 @@ func (r Registry) renderLeaf(q *Query, c Condition) (string, error) {
 	}
 	f, ok := r[c.Key]
 	if !ok {
-		return "", fmt.Errorf("unknown filter field: %q", c.Key)
+		return "", fmt.Errorf("%w: %q", ErrUnknownField, c.Key)
 	}
 	if !f.allows(c.Op) {
-		return "", fmt.Errorf("operator %q not valid for %s field %q", c.Op, f.Type, c.Key)
+		return "", fmt.Errorf("%w: %q on %s field %q", ErrBadOperator, c.Op, f.Type, c.Key)
 	}
-	col := q.Ident(f.column(c.Key))
+	col := f.whereExpr(q.d, c.Key)
 	cond, err := resolve(q, f, col, c)
 	if err != nil {
-		return "", fmt.Errorf("field %q: %w", c.Key, err)
+		// Past the allows() gate, any resolve failure is value-domain (coercion
+		// or enum), so surface it as ErrBadValue for callers that branch on it.
+		return "", fmt.Errorf("field %q: %w", c.Key, valueErr(err))
 	}
 	if cond != "" {
 		for _, k := range f.Joins {
@@ -303,6 +318,15 @@ var sqlCmp = map[Operator]string{
 
 // --- coercion helpers ---
 
+// valueErr tags a value-domain failure as ErrBadValue (unless it already is),
+// preserving the original message for context.
+func valueErr(err error) error {
+	if errors.Is(err, ErrBadValue) {
+		return err
+	}
+	return fmt.Errorf("%w: %v", ErrBadValue, err)
+}
+
 func first(vals []any) any {
 	if len(vals) == 0 {
 		return nil
@@ -316,7 +340,7 @@ func scalarStr(f Field, vals []any) (string, error) {
 		return "", err
 	}
 	if !f.validEnum(s) {
-		return "", fmt.Errorf("value %q not in enum", s)
+		return "", fmt.Errorf("%w: %q not in enum", ErrBadValue, s)
 	}
 	return s, nil
 }
@@ -328,7 +352,7 @@ func enumStrSlice(f Field, vals []any) ([]string, error) {
 	}
 	for _, s := range out {
 		if !f.validEnum(s) {
-			return nil, fmt.Errorf("value %q not in enum", s)
+			return nil, fmt.Errorf("%w: %q not in enum", ErrBadValue, s)
 		}
 	}
 	return out, nil

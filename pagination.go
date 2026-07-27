@@ -82,15 +82,15 @@ func (r Registry) KeysetWhere(d Dialect, sorts []Sort, cur Cursor) (string, []an
 	for i, s := range sorts {
 		f, ok := r[s.Key]
 		if !ok {
-			return "", nil, fmt.Errorf("unknown sort field: %q", s.Key)
+			return "", nil, fmt.Errorf("%w: %q", ErrUnknownField, s.Key)
 		}
 		if !f.Sortable {
-			return "", nil, fmt.Errorf("field %q is not sortable", s.Key)
+			return "", nil, fmt.Errorf("%w: field %q is not sortable", ErrBadOperator, s.Key)
 		}
 		if _, has := cur[s.Key]; !has {
 			return "", nil, fmt.Errorf("cursor missing value for sort key %q", s.Key)
 		}
-		exprs[i] = f.sortExpr(s.Key)
+		exprs[i] = f.selectExpr(s.Key)
 	}
 
 	q := newQuery(d)

@@ -19,10 +19,12 @@ var registry = filtersql.Registry{
 	"owner":        {Type: filtersql.TypeString, Column: "a.owner", Nullable: true},
 	"status":       {Type: filtersql.TypeEnum, Column: "a.status", Enum: []string{"ACTIVE", "ARCHIVED"}},
 	"severity":     {Type: filtersql.TypeInt, Column: "f.severity", Sortable: true, Joins: []string{"finding"}},
-	"is_exploited": {Type: filtersql.TypeBool, Column: "if(f.exploited,'Yes','No')", ValueExpr: "if(f.exploited,'Yes','No')", Joins: []string{"finding"}},
+	"is_exploited": {Type: filtersql.TypeBool, Column: "if(f.exploited,'Yes','No')", ValueExpr: "if(f.exploited,'Yes','No')", Raw: true, Joins: []string{"finding"}},
 	"tags":         {Type: filtersql.TypeArray, Column: "a.tags"},
 	"labels":       {Type: filtersql.TypeMap, Column: "a.labels"},
 	"policy":       {Type: filtersql.TypeString, Column: "p.name", ValueExpr: "p.display_name", Joins: []string{"policy"}},
+	// Having field: an aggregate expression filtered after GROUP BY.
+	"finding_count": {Type: filtersql.TypeInt, Column: "count()", Having: true, Joins: []string{"finding"}},
 }
 
 // joins declares each JOIN fragment and what it depends on. policy needs
@@ -33,6 +35,11 @@ var joins = filtersql.Joins{
 }
 
 func main() {
+	// Fail fast at boot: join keys resolve, no cycles, no Sortable+Having mixups.
+	if err := registry.Validate(joins); err != nil {
+		panic(err)
+	}
+
 	section("1. Schema introspection — what a /filters endpoint returns")
 	schema, _ := json.MarshalIndent(registry.Schema(), "", "  ")
 	fmt.Printf("%s\n", schema)
@@ -111,6 +118,14 @@ func main() {
 	fmt.Printf("Next page (cursor=%s):\n  WHERE %s AND %s\n  ORDER BY %s\n  %s\n  ARGS %v + %v\n",
 		token, listWhere, seek, order, limit, listArgs, seekArgs)
 	fmt.Println("  ^ seek predicate is built from the SAME sort spec, so order & cursor can't disagree.")
+
+	section("8. HAVING — filter on aggregates, placeholders continuous with WHERE")
+	w, h, hargs, _ := registry.CompileWhereHaving(filtersql.Postgres{},
+		[]filtersql.Condition{{Key: "status", Op: filtersql.OpEq, Values: []any{"ACTIVE"}}},
+		[]filtersql.Condition{{Key: "finding_count", Op: filtersql.OpGt, Values: []any{5}}})
+	fmt.Printf("SELECT a.status, count() FROM asset a %s\n", joins["finding"].SQL)
+	fmt.Printf("WHERE %s\nGROUP BY a.status\nHAVING %s\nARGS %v\n", w, h, hargs)
+	fmt.Println("  ^ count() (a Raw Having field) isn't quoted; $2 continues after the WHERE's $1.")
 }
 
 func joinOrBlank(s string) string {

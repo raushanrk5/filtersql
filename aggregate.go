@@ -103,7 +103,7 @@ func (r Registry) AggregateQuery(d Dialect, joins Joins, agg Aggregation, conds 
 	if agg.Metric != "" {
 		mf, ok := r[agg.Metric]
 		if !ok {
-			return AggQuery{}, fmt.Errorf("unknown metric field: %q", agg.Metric)
+			return AggQuery{}, fmt.Errorf("%w: %q", ErrUnknownField, agg.Metric)
 		}
 		if (agg.Func == Sum || agg.Func == Avg) && mf.Type != TypeInt && mf.Type != TypeFloat {
 			return AggQuery{}, fmt.Errorf("aggregation %q needs a numeric metric, got %s field %q", agg.Func, mf.Type, agg.Metric)
