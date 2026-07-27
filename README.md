@@ -219,12 +219,14 @@ Keyset requires non-null, unique sort keys (add a unique tie-breaker like the id
 
 The compiler validates and builds portable SQL; only the genuinely divergent bits — placeholder style, identifier quoting, `LIKE`/`ILIKE`, array containment, map/JSON access — go through a `Dialect`. So the same registry targets different databases:
 
-| | ClickHouse | Postgres | SQLite |
-|---|---|---|---|
-| placeholder | `?` | `$1, $2` | `?` |
-| `_contains_any` on array | `hasAny(a.tags, ?)` | `"a"."tags" && $1` | `EXISTS (… json_each …)` |
-| `_like` | `ILIKE` (escaped) | `ILIKE` (escaped) | `LIKE … ESCAPE '\'` |
-| map has key/value | `col[?] = ?` | `col ->> ? = ?` | `EXISTS (… json_each …)` |
+| | ClickHouse | Postgres | SQLite | MySQL |
+|---|---|---|---|---|
+| placeholder | `?` | `$1, $2` | `?` | `?` |
+| identifier quote | *(none)* | `"a"."b"` | `"a"."b"` | `` `a`.`b` `` |
+| `_like` | `ILIKE` | `ILIKE` | `LIKE … ESCAPE` | `LOWER(col) LIKE` |
+| `_contains_any` on array | `hasAny(col, ?)` | `col && $1::text[]` | `json_each` | `JSON_OVERLAPS(col, ?)` |
+| map has key/value | `col[?] = ?` | `col ->> ? = ?` | `json_each` | `JSON_EXTRACT(col, ?)` |
+| `NULLS LAST` | native | native | native | `col IS NULL, col …` |
 
 Adding a dialect is implementing one small interface:
 
@@ -241,7 +243,7 @@ type Dialect interface {
 }
 ```
 
-Ships with `ClickHouse{}`, `Postgres{}`, and `SQLite{}` (SQLite stores arrays/maps as JSON text, queried via `json_each`).
+Ships with `ClickHouse{}`, `Postgres{}`, `SQLite{}`, and `MySQL{}` (SQLite stores arrays/maps as JSON text, queried via `json_each`).
 
 ---
 

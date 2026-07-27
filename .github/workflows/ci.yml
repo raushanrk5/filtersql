@@ -24,6 +24,19 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: filtersql_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -41,10 +54,11 @@ jobs:
           go vet ./...
           go test -race ./...
 
-      - name: test — integration (SQLite + Postgres)
+      - name: test — integration (SQLite + Postgres + MySQL)
         working-directory: integration
         env:
           FILTERSQL_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/filtersql_test?sslmode=disable
+          FILTERSQL_MYSQL_DSN: root:root@tcp(127.0.0.1:3306)/filtersql_test
         run: |
           go vet ./...
           go test -race ./...

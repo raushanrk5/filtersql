@@ -32,6 +32,7 @@ func FuzzInjectionInvariant(f *testing.F) {
 		{ClickHouse{}, "t.c = ?", "t.c ILIKE ?"},
 		{Postgres{}, `"t"."c" = $1`, `"t"."c" ILIKE $1`},
 		{SQLite{}, `"t"."c" = ?`, `"t"."c" LIKE ? ESCAPE '\'`},
+		{MySQL{}, "`t`.`c` = ?", "LOWER(`t`.`c`) LIKE ?"},
 	}
 
 	f.Fuzz(func(t *testing.T, v string) {
