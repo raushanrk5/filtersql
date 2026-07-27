@@ -56,7 +56,8 @@ func main() {
 
 `Compile` returns a `WHERE` **fragment** plus its bind args — you slot it into your own base query (which owns the table name and tenant scoping). It never builds a whole query for you, so nothing host-specific leaks into the library.
 
-Run the full tour: **`go run ./example`**.
+- **`go run ./example`** — a printed tour of every capability (no database).
+- **`cd cookbook && go run .`** — a complete, runnable HTTP service (`/filters`, `/assets/values`, `/assets/search` with filtering, sorting, and keyset pagination) backed by SQLite. The clearest "how do I use this in my service" reference.
 
 ---
 
