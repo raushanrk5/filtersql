@@ -1,3 +1,6 @@
+// Package bind holds filtersql's reflection-based helpers: FromStruct builds a
+// Registry from struct tags, and For[T]/ScanAll execute a query and scan rows
+// into []T. It depends only on database/sql from the standard library.
 package bind
 
 import (

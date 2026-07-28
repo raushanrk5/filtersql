@@ -72,7 +72,7 @@ func main() {
 
 ### Or generate the registry from a struct
 
-Prefer tags to a hand-written map? `FromStruct` builds the registry from `filter:"..."` tags. Only tagged fields are included (explicit opt-in), the type is inferred from the Go type, and a pointer implies `nullable`:
+Prefer tags to a hand-written map? `bind.FromStruct` builds the registry from `filter:"..."` tags. Only tagged fields are included (explicit opt-in), the type is inferred from the Go type, and a pointer implies `nullable`:
 
 ```go
 type Asset struct {
@@ -245,16 +245,20 @@ Adding a dialect is implementing one small interface:
 type Dialect interface {
     Placeholder(n int) string
     QuoteIdent(ident string) string
-    Like(q *Query, col, pattern string, prefix bool) string
+    Like(q *Query, col, pattern string, match LikeMatch) string
     ArrayContains(q *Query, col string, values []string, all bool) string
     MapHasKeys(q *Query, col string, keys []string) string
     MapHasKeyValues(q *Query, col string, pairs []KeyValue) string
     Aggregate(fn AggFunc, expr string) string
     OrderTerm(expr string, desc bool, nulls NullsOrder) string
+    Now() string
+    RelativeTime(amount int, unit TimeUnit) string
 }
 ```
 
-Ships with `ClickHouse{}`, `Postgres{}`, `SQLite{}`, and `MySQL{}` (SQLite stores arrays/maps as JSON text, queried via `json_each`).
+An optional `ScalarIn` method (detected at runtime) lets a dialect bind a single array param for large `_in` lists — see [Scale safety](#scale-safety).
+
+The `dialects` package ships `dialects.ClickHouse{}`, `Postgres{}`, `SQLite{}`, and `MySQL{}` (SQLite stores arrays/maps as JSON text, queried via `json_each`).
 
 ---
 
@@ -384,7 +388,7 @@ You still own `SELECT`/`FROM` and tenant scoping — the Builder just guarantees
 
 ## Typed queries & row scanning
 
-If you'd rather not hand-write `SELECT`/`rows.Scan`, `For[T]` pairs a registry with a row type (its `db` tags name the columns) and runs the whole thing — compile, execute, scan into `[]T`, and return the next cursor:
+If you'd rather not hand-write `SELECT`/`rows.Scan`, `bind.For[T]` pairs a registry with a row type (its `db` tags name the columns) and runs the whole thing — compile, execute, scan into `[]T`, and return the next cursor:
 
 ```go
 type Asset struct {
@@ -405,7 +409,7 @@ page, next, err := assets.Select(dialect).
 // page is []Asset; next is the cursor for the following page ("" if none)
 ```
 
-Rendering is deferred and always ordered (scope → WHERE → seek), so method call order never affects placeholder numbering. `ScanAll[T]` / `ScanOne[T]` are also exported for scanning arbitrary `*sql.Rows`. This layer uses only `database/sql` from the standard library — **still no third-party dependencies.**
+Rendering is deferred and always ordered (scope → WHERE → seek), so method call order never affects placeholder numbering. `bind.ScanAll[T]` / `bind.ScanOne[T]` are also exported for scanning arbitrary `*sql.Rows`. This layer uses only `database/sql` from the standard library — **still no third-party dependencies.**
 
 For "showing 1–20 of 340" UIs, `.Count(ctx, db)` runs the same filter set without sort/limit/cursor, so the total and the page can't disagree:
 

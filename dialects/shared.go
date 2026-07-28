@@ -1,3 +1,6 @@
+// Package dialects provides the concrete SQL renderers for filtersql:
+// ClickHouse, Postgres, SQLite, and MySQL. Pass one to Registry.Compile and the
+// other query methods, e.g. reg.Compile(dialects.Postgres{}, filters).
 package dialects
 
 import (
