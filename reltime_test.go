@@ -1,7 +1,9 @@
-package filtersql
+package filtersql_test
 
 import (
 	"errors"
+	. "github.com/raushanrk5/filtersql"
+	. "github.com/raushanrk5/filtersql/dialects"
 	"testing"
 )
 
@@ -49,21 +51,6 @@ func TestRelativeTime_BadInterval(t *testing.T) {
 		_, _, err := reg.Compile(ClickHouse{}, []Condition{{Key: "created", Op: OpLast, Values: []any{v}}})
 		if !errors.Is(err, ErrBadValue) {
 			t.Errorf("interval %q: want ErrBadValue, got %v", v, err)
-		}
-	}
-}
-
-func TestParseInterval(t *testing.T) {
-	ok := map[string]struct {
-		n int
-		u TimeUnit
-	}{
-		"30m": {30, Minute}, "24h": {24, Hour}, "7d": {7, Day}, "2w": {2, Week},
-	}
-	for in, want := range ok {
-		n, u, err := parseInterval(in)
-		if err != nil || n != want.n || u != want.u {
-			t.Errorf("parseInterval(%q) = %d,%v,%v", in, n, u, err)
 		}
 	}
 }

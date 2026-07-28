@@ -1,6 +1,10 @@
-package filtersql
+package filtersql_test
 
-import "testing"
+import (
+	. "github.com/raushanrk5/filtersql"
+	. "github.com/raushanrk5/filtersql/dialects"
+	"testing"
+)
 
 var benchReg = Registry{
 	"status":   {Type: TypeEnum, Column: "a.status", Enum: []string{"ACTIVE", "ARCHIVED"}},

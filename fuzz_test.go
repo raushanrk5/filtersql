@@ -1,6 +1,10 @@
-package filtersql
+package filtersql_test
 
-import "testing"
+import (
+	. "github.com/raushanrk5/filtersql"
+	. "github.com/raushanrk5/filtersql/dialects"
+	"testing"
+)
 
 // FuzzInjectionInvariant is the executable form of the safety claim: the
 // compiled SQL structure is *independent of the value*. For a fixed field and

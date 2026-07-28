@@ -1,6 +1,8 @@
-package filtersql
+package bind
 
 import (
+	. "github.com/raushanrk5/filtersql"
+	. "github.com/raushanrk5/filtersql/dialects"
 	"reflect"
 	"testing"
 	"time"
@@ -160,4 +162,18 @@ func keysOf(r Registry) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func TestSearchCols_FromStructTag(t *testing.T) {
+	type search struct {
+		Q string `filter:"q,search=a.name|a.email,hidden"`
+	}
+	reg := MustFromStruct(search{})
+	f := reg["q"]
+	if !reflect.DeepEqual(f.SearchCols, []string{"a.name", "a.email"}) {
+		t.Errorf("SearchCols = %v", f.SearchCols)
+	}
+	if !f.Hidden {
+		t.Error("expected hidden")
+	}
 }

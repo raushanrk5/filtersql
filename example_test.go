@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/raushanrk5/filtersql"
+	"github.com/raushanrk5/filtersql/bind"
+	"github.com/raushanrk5/filtersql/dialects"
 )
 
 func ExampleRegistry_Compile() {
@@ -17,7 +19,7 @@ func ExampleRegistry_Compile() {
 		{Key: "tags", Op: filtersql.OpContainsAny, Values: []any{"prod", "crit"}},
 	}
 
-	where, args, _ := reg.Compile(filtersql.Postgres{}, filters)
+	where, args, _ := reg.Compile(dialects.Postgres{}, filters)
 	fmt.Println(where)
 	fmt.Println(args)
 	// Output:
@@ -40,9 +42,9 @@ func ExampleMustFromStruct() {
 		Status   string `filter:"status,enum=ACTIVE|ARCHIVED"`
 		Severity int    `filter:"severity,col=f.severity"`
 	}
-	reg := filtersql.MustFromStruct(Asset{})
+	reg := bind.MustFromStruct(Asset{})
 
-	where, args, _ := reg.Compile(filtersql.ClickHouse{}, []filtersql.Condition{
+	where, args, _ := reg.Compile(dialects.ClickHouse{}, []filtersql.Condition{
 		{Key: "severity", Op: filtersql.OpGte, Values: []any{7}},
 	})
 	fmt.Println(where, args)
@@ -53,7 +55,7 @@ func ExampleRegistry_Builder() {
 	reg := filtersql.Registry{
 		"status": {Type: filtersql.TypeEnum, Column: "status"},
 	}
-	b := reg.Builder(filtersql.Postgres{})
+	b := reg.Builder(dialects.Postgres{})
 	tenant := b.Arg("t1") // caller's tenant scoping shares the numbering
 	where, _ := b.Where([]filtersql.Condition{{Key: "status", Op: filtersql.OpEq, Values: []any{"ACTIVE"}}})
 

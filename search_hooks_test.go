@@ -1,7 +1,9 @@
-package filtersql
+package filtersql_test
 
 import (
 	"errors"
+	. "github.com/raushanrk5/filtersql"
+	. "github.com/raushanrk5/filtersql/dialects"
 	"reflect"
 	"testing"
 )
@@ -66,19 +68,5 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 	// within limit -> ok
 	if _, _, err := reg.Compile(ClickHouse{}, []Condition{{Key: "name", Op: OpEq, Values: []any{"ok"}}}); err != nil {
 		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestSearchCols_FromStructTag(t *testing.T) {
-	type search struct {
-		Q string `filter:"q,search=a.name|a.email,hidden"`
-	}
-	reg := MustFromStruct(search{})
-	f := reg["q"]
-	if !reflect.DeepEqual(f.SearchCols, []string{"a.name", "a.email"}) {
-		t.Errorf("SearchCols = %v", f.SearchCols)
-	}
-	if !f.Hidden {
-		t.Error("expected hidden")
 	}
 }

@@ -24,6 +24,16 @@ One entry per field is the single source of truth. It decides which operators th
 go get github.com/raushanrk5/filtersql
 ```
 
+## Packages
+
+| Import | What it holds |
+|---|---|
+| `filtersql` | the engine — `Registry`/`Field`/`Condition`, `Compile`, the `Dialect` interface, and every query feature (joins, sorting, pagination, aggregation, HAVING, guardrails, validators). |
+| `filtersql/dialects` | the concrete renderers — `dialects.ClickHouse{}`, `Postgres{}`, `SQLite{}`, `MySQL{}`. Import to pass a dialect to `Compile`. |
+| `filtersql/bind` | optional reflection helpers — `bind.FromStruct` (registry from struct tags), `bind.For[T]` / `bind.ScanAll` (execute + scan into `[]T`). |
+
+A typical caller imports `filtersql` + `dialects`; `bind` is optional.
+
 ## Quickstart
 
 ```go
@@ -32,6 +42,7 @@ package main
 import (
     "fmt"
     "github.com/raushanrk5/filtersql"
+    "github.com/raushanrk5/filtersql/dialects"
 )
 
 var registry = filtersql.Registry{
@@ -45,7 +56,7 @@ func main() {
         {Key: "tags", Op: filtersql.OpContainsAny, Values: []any{"prod", "critical"}},
     }
 
-    where, args, err := registry.Compile(filtersql.ClickHouse{}, filters)
+    where, args, err := registry.Compile(dialects.ClickHouse{}, filters)
     if err != nil {
         panic(err)
     }
@@ -73,7 +84,7 @@ type Asset struct {
     Internal string  // no tag -> not filterable
 }
 
-var Assets = filtersql.MustFromStruct(Asset{})
+var Assets = bind.MustFromStruct(Asset{})
 ```
 
 Options: `type=`, `col=`, `valueexpr=`, `enum=A|B|C`, `joins=a|b`, and the flags `sortable`, `nullable`, `hidden`, `raw`, `having`. Anonymous embedded structs are flattened, so shared filter sets compose.
@@ -113,7 +124,7 @@ var joins = filtersql.Joins{
     "policy":  {SQL: "INNER JOIN policy p ON p.finding_id = f.id", Requires: []string{"finding"}},
 }
 
-where, joinSQL, args, _ := registry.CompileWithJoins(filtersql.ClickHouse{}, joins, filters)
+where, joinSQL, args, _ := registry.CompileWithJoins(dialects.ClickHouse{}, joins, filters)
 ```
 
 Filtering on a `policy` field emits both joins, in the right order:
@@ -132,7 +143,7 @@ Only joins reachable from filters that actually resolved are emitted; the order 
 `ValuesQuery` assembles everything a `/filter-values?field=X` endpoint needs — the projected expression, the WHERE from **every other** active filter (the facet doesn't filter itself), and the JOINs both of those need:
 
 ```go
-vq, _ := registry.ValuesQuery(filtersql.ClickHouse{}, joins, "severity", activeFilters)
+vq, _ := registry.ValuesQuery(dialects.ClickHouse{}, joins, "severity", activeFilters)
 // SELECT DISTINCT f.severity AS value
 // FROM asset a
 // INNER JOIN finding f ON f.asset_id = a.id      <- projection still needs the join
@@ -146,7 +157,7 @@ vq, _ := registry.ValuesQuery(filtersql.ClickHouse{}, joins, "severity", activeF
 `FacetCounts` is the `ValuesQuery` sibling for `Critical (42)`-style sidebars — rows per value of a field, self-excluding that field's own filter:
 
 ```go
-fc, _ := registry.FacetCounts(filtersql.ClickHouse{}, joins, "status", activeFilters)
+fc, _ := registry.FacetCounts(dialects.ClickHouse{}, joins, "status", activeFilters)
 // SELECT a.status AS bucket, count() AS n
 // FROM asset a INNER JOIN finding f ON f.asset_id = a.id
 // WHERE tenant_id = ? AND f.severity >= ?     <- status's own filter excluded
@@ -304,7 +315,7 @@ reg := filtersql.Registry{
     "status":        {Type: filtersql.TypeEnum, Column: "a.status"},
     "finding_count": {Type: filtersql.TypeInt, Column: "count()", Having: true},
 }
-where, having, args, _ := reg.CompileWhereHaving(filtersql.Postgres{},
+where, having, args, _ := reg.CompileWhereHaving(dialects.Postgres{},
     []filtersql.Condition{{Key: "status", Op: filtersql.OpEq, Values: []any{"ACTIVE"}}},
     []filtersql.Condition{{Key: "finding_count", Op: filtersql.OpGt, Values: []any{5}}})
 // where  = "a"."status" = $1
@@ -355,7 +366,7 @@ default:
 `Compile`, `KeysetWhere`, and `CompileWhereHaving` each start their own placeholder counter. Combining a filter WHERE *and* a keyset seek by hand is therefore safe for `?`-dialects but **breaks on Postgres** — both restart at `$1` and the args misalign. The `Builder` threads **one** counter through every fragment:
 
 ```go
-b := reg.Builder(filtersql.Postgres{})
+b := reg.Builder(dialects.Postgres{})
 tenant := b.Arg(tenantID)          // $1  — your own tenant scoping shares the numbering
 where, _ := b.Where(filters)       // $2 …
 seek, _  := b.Keyset(sort, cursor) // continues …
@@ -382,7 +393,7 @@ type Asset struct {
     Severity int    `db:"severity"`
 }
 
-assets := filtersql.For[Asset](registry, "asset")
+assets := bind.For[Asset](registry, "asset")
 
 page, next, err := assets.Select(dialect).
     Scope(func(b *filtersql.Builder) string { return "tenant_id = " + b.Arg(tenantID) }).

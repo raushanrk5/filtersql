@@ -1,7 +1,8 @@
-package filtersql
+package dialects
 
 import (
 	"fmt"
+	fq "github.com/raushanrk5/filtersql"
 	"strings"
 )
 
@@ -28,14 +29,14 @@ func (MySQL) QuoteIdent(ident string) string {
 // Like lowercases both sides so the match is case-insensitive regardless of the
 // column's collation. MySQL uses backslash as the default LIKE escape, so the
 // shared escapeLike (via likeNeedle) needs no ESCAPE clause.
-func (MySQL) Like(q *Query, col, pattern string, match LikeMatch) string {
+func (MySQL) Like(q *fq.Query, col, pattern string, match fq.LikeMatch) string {
 	needle := strings.ToLower(likeNeedle(pattern, match))
 	return fmt.Sprintf("LOWER(%s) LIKE %s", col, q.Arg(needle))
 }
 
 // ArrayContains treats the column as a JSON array. JSON_CONTAINS(target, cand)
 // requires all of cand present (superset); JSON_OVERLAPS is intersection.
-func (MySQL) ArrayContains(q *Query, col string, values []string, all bool) string {
+func (MySQL) ArrayContains(q *fq.Query, col string, values []string, all bool) string {
 	arg := q.Arg(jsonArrayLiteral(values))
 	if all {
 		return fmt.Sprintf("JSON_CONTAINS(%s, %s)", col, arg)
@@ -44,7 +45,7 @@ func (MySQL) ArrayContains(q *Query, col string, values []string, all bool) stri
 }
 
 // MapHasKeys tests a JSON object for each key via a bound JSON path.
-func (MySQL) MapHasKeys(q *Query, col string, keys []string) string {
+func (MySQL) MapHasKeys(q *fq.Query, col string, keys []string) string {
 	parts := make([]string, len(keys))
 	for i, k := range keys {
 		parts[i] = fmt.Sprintf("JSON_CONTAINS_PATH(%s, 'one', %s)", col, q.Arg(jsonPath(k)))
@@ -53,7 +54,7 @@ func (MySQL) MapHasKeys(q *Query, col string, keys []string) string {
 }
 
 // MapHasKeyValues compares the unquoted JSON value at each key's path.
-func (MySQL) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string {
+func (MySQL) MapHasKeyValues(q *fq.Query, col string, pairs []fq.KeyValue) string {
 	var parts []string
 	for _, p := range pairs {
 		for _, v := range p.Values {
@@ -65,21 +66,21 @@ func (MySQL) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string {
 }
 
 // Aggregate renders an aggregate call; MySQL spells "count all" as count(*).
-func (MySQL) Aggregate(fn AggFunc, expr string) string {
+func (MySQL) Aggregate(fn fq.AggFunc, expr string) string {
 	return aggCall(fn, expr, "count(*)")
 }
 
 // OrderTerm emulates NULLS FIRST/LAST, which MySQL has no syntax for, with a
 // leading boolean sort key. MySQL's default is NULLs-first on ASC / last on DESC.
-func (MySQL) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
+func (MySQL) OrderTerm(expr string, desc bool, nulls fq.NullsOrder) string {
 	dir := "ASC"
 	if desc {
 		dir = "DESC"
 	}
 	switch nulls {
-	case NullsFirst:
+	case fq.NullsFirst:
 		return fmt.Sprintf("%s IS NOT NULL, %s %s", expr, expr, dir)
-	case NullsLast:
+	case fq.NullsLast:
 		return fmt.Sprintf("%s IS NULL, %s %s", expr, expr, dir)
 	default:
 		return fmt.Sprintf("%s %s", expr, dir)
@@ -88,11 +89,11 @@ func (MySQL) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
 
 func (MySQL) Now() string { return "NOW()" }
 
-func (MySQL) RelativeTime(amount int, unit TimeUnit) string {
+func (MySQL) RelativeTime(amount int, unit fq.TimeUnit) string {
 	op := "+"
 	if amount < 0 {
 		op, amount = "-", -amount
 	}
-	kw := map[TimeUnit]string{Minute: "MINUTE", Hour: "HOUR", Day: "DAY", Week: "WEEK"}[unit]
+	kw := map[fq.TimeUnit]string{fq.Minute: "MINUTE", fq.Hour: "HOUR", fq.Day: "DAY", fq.Week: "WEEK"}[unit]
 	return fmt.Sprintf("NOW() %s INTERVAL %d %s", op, amount, kw)
 }

@@ -1,7 +1,8 @@
-package filtersql
+package dialects
 
 import (
 	"encoding/json"
+	fq "github.com/raushanrk5/filtersql"
 	"strings"
 )
 
@@ -15,12 +16,12 @@ func escapeLike(s string) string {
 
 // likeNeedle escapes the pattern's wildcards and wraps it for the requested
 // anchoring: substring (%x%), prefix (x%), or suffix (%x).
-func likeNeedle(pattern string, m LikeMatch) string {
+func likeNeedle(pattern string, m fq.LikeMatch) string {
 	p := escapeLike(pattern)
 	switch m {
-	case MatchPrefix:
+	case fq.MatchPrefix:
 		return p + "%"
-	case MatchSuffix:
+	case fq.MatchSuffix:
 		return "%" + p
 	default:
 		return "%" + p + "%"
@@ -29,7 +30,7 @@ func likeNeedle(pattern string, m LikeMatch) string {
 
 // stdOrderTerm renders a standard-SQL ORDER BY term with native NULLS FIRST/LAST
 // (ClickHouse, Postgres, SQLite); MySQL emulates it instead.
-func stdOrderTerm(expr string, desc bool, nulls NullsOrder) string {
+func stdOrderTerm(expr string, desc bool, nulls fq.NullsOrder) string {
 	s := expr
 	if desc {
 		s += " DESC"
@@ -37,9 +38,9 @@ func stdOrderTerm(expr string, desc bool, nulls NullsOrder) string {
 		s += " ASC"
 	}
 	switch nulls {
-	case NullsFirst:
+	case fq.NullsFirst:
 		s += " NULLS FIRST"
-	case NullsLast:
+	case fq.NullsLast:
 		s += " NULLS LAST"
 	}
 	return s
@@ -47,14 +48,14 @@ func stdOrderTerm(expr string, desc bool, nulls NullsOrder) string {
 
 // aggCall renders the SQL for an aggregate. countAll is the dialect's "count all
 // rows" form used when fn is Count with no expr.
-func aggCall(fn AggFunc, expr, countAll string) string {
+func aggCall(fn fq.AggFunc, expr, countAll string) string {
 	switch fn {
-	case Count:
+	case fq.Count:
 		if expr == "" {
 			return countAll
 		}
 		return "count(" + expr + ")"
-	case CountDistinct:
+	case fq.CountDistinct:
 		return "count(DISTINCT " + expr + ")"
 	default: // Sum, Avg, Min, Max — the const value is the SQL function name
 		return string(fn) + "(" + expr + ")"

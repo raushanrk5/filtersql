@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	fq "github.com/raushanrk5/filtersql"
+	"github.com/raushanrk5/filtersql/dialects"
 	_ "modernc.org/sqlite"
 )
 
@@ -81,7 +82,7 @@ func ids(t *testing.T, db *sql.DB, query string, args []any) []string {
 
 func TestFilter_ReturnsRightRows(t *testing.T) {
 	db := setup(t)
-	where, args, err := reg.Compile(fq.SQLite{}, []fq.Condition{
+	where, args, err := reg.Compile(dialects.SQLite{}, []fq.Condition{
 		{Key: "status", Op: fq.OpEq, Values: []any{"ACTIVE"}},
 		{Key: "severity", Op: fq.OpGte, Values: []any{7}},
 	})
@@ -96,7 +97,7 @@ func TestFilter_ReturnsRightRows(t *testing.T) {
 
 func TestFilter_NullOperator(t *testing.T) {
 	db := setup(t)
-	where, args, _ := reg.Compile(fq.SQLite{}, []fq.Condition{{Key: "owner", Op: fq.OpIsNull}})
+	where, args, _ := reg.Compile(dialects.SQLite{}, []fq.Condition{{Key: "owner", Op: fq.OpIsNull}})
 	got := ids(t, db, "SELECT id FROM asset WHERE "+where, args)
 	if want := []string{"a2"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
@@ -107,13 +108,13 @@ func TestFilter_ArrayContainsViaJSON(t *testing.T) {
 	db := setup(t)
 
 	// contains_any ["api","db"] -> a3 (db), a4 (api)
-	w1, a1, _ := reg.Compile(fq.SQLite{}, []fq.Condition{{Key: "tags", Op: fq.OpContainsAny, Values: []any{"api", "db"}}})
+	w1, a1, _ := reg.Compile(dialects.SQLite{}, []fq.Condition{{Key: "tags", Op: fq.OpContainsAny, Values: []any{"api", "db"}}})
 	if got, want := ids(t, db, "SELECT id FROM asset WHERE "+w1+" ORDER BY id", a1), []string{"a3", "a4"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("contains_any: got %v, want %v", got, want)
 	}
 
 	// contains ALL ["prod","crit"] -> a1 only
-	w2, a2, _ := reg.Compile(fq.SQLite{}, []fq.Condition{{Key: "tags", Op: fq.OpContains, Values: []any{"prod", "crit"}}})
+	w2, a2, _ := reg.Compile(dialects.SQLite{}, []fq.Condition{{Key: "tags", Op: fq.OpContains, Values: []any{"prod", "crit"}}})
 	if got, want := ids(t, db, "SELECT id FROM asset WHERE "+w2+" ORDER BY id", a2), []string{"a1"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("contains-all: got %v, want %v", got, want)
 	}
@@ -123,7 +124,7 @@ func TestScalarIn_JSONEachExecutes(t *testing.T) {
 	db := setup(t)
 	// String _in on SQLite binds one JSON-array param and expands via json_each.
 	reg := fq.Registry{"name": {Type: fq.TypeString, Column: "name"}}
-	where, args, err := reg.Compile(fq.SQLite{}, []fq.Condition{
+	where, args, err := reg.Compile(dialects.SQLite{}, []fq.Condition{
 		{Key: "name", Op: fq.OpIn, Values: []any{"web-01", "db-01"}}})
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +138,7 @@ func TestScalarIn_JSONEachExecutes(t *testing.T) {
 func TestKeysetPagination_PagesCorrectly(t *testing.T) {
 	db := setup(t)
 	sorts := []fq.Sort{{Key: "severity", Desc: true}, {Key: "id"}}
-	order, _ := reg.OrderBy(fq.SQLite{}, sorts)
+	order, _ := reg.OrderBy(dialects.SQLite{}, sorts)
 	limit, _ := fq.LimitOffset(2, 0)
 
 	// Full order by severity desc: a1(9), a3(8), a4(7), a2(5).
@@ -147,7 +148,7 @@ func TestKeysetPagination_PagesCorrectly(t *testing.T) {
 	}
 
 	// Cursor = last row of page1 (a3, severity 8). Seek strictly after it.
-	seek, sargs, err := reg.KeysetWhere(fq.SQLite{}, sorts, fq.Cursor{"severity": 8, "id": "a3"})
+	seek, sargs, err := reg.KeysetWhere(dialects.SQLite{}, sorts, fq.Cursor{"severity": 8, "id": "a3"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +168,7 @@ func TestAggregation_HavingFiltersGroups(t *testing.T) {
 	db := setup(t)
 	// Group by status; keep groups with more than one asset.
 	// ACTIVE has 3 (a1,a2,a4), ARCHIVED has 1 (a3) -> only ACTIVE survives.
-	_, having, args, err := reg.CompileWhereHaving(fq.SQLite{}, nil,
+	_, having, args, err := reg.CompileWhereHaving(dialects.SQLite{}, nil,
 		[]fq.Condition{{Key: "finding_count", Op: fq.OpGt, Values: []any{1}}})
 	if err != nil {
 		t.Fatal(err)

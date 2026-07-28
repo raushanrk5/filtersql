@@ -1,7 +1,9 @@
-package filtersql
+package filtersql_test
 
 import (
 	"encoding/json"
+	. "github.com/raushanrk5/filtersql"
+	. "github.com/raushanrk5/filtersql/dialects"
 	"reflect"
 	"testing"
 )
@@ -128,17 +130,21 @@ func TestCompileWithJoins_Deterministic(t *testing.T) {
 }
 
 func TestOrderJoins_CycleDetected(t *testing.T) {
+	reg := Registry{"x": {Type: TypeString, Column: "x", Joins: []string{"a"}}}
 	cyclic := Joins{
 		"a": {SQL: "JOIN a", Requires: []string{"b"}},
 		"b": {SQL: "JOIN b", Requires: []string{"a"}},
 	}
-	if _, err := orderJoins(cyclic, map[string]bool{"a": true}); err == nil {
+	_, _, _, err := reg.CompileWithJoins(ClickHouse{}, cyclic, []Condition{{Key: "x", Op: OpEq, Values: []any{"v"}}})
+	if err == nil {
 		t.Fatal("expected cycle error, got nil")
 	}
 }
 
 func TestOrderJoins_UndefinedKey(t *testing.T) {
-	if _, err := orderJoins(Joins{}, map[string]bool{"ghost": true}); err == nil {
+	reg := Registry{"x": {Type: TypeString, Column: "x", Joins: []string{"ghost"}}}
+	_, _, _, err := reg.CompileWithJoins(ClickHouse{}, Joins{}, []Condition{{Key: "x", Op: OpEq, Values: []any{"v"}}})
+	if err == nil {
 		t.Fatal("expected undefined-key error, got nil")
 	}
 }

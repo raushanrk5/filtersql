@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	fq "github.com/raushanrk5/filtersql"
+	"github.com/raushanrk5/filtersql/dialects"
 )
 
 // TestReltime_SQLite proves the relative-time SQL actually executes and filters
@@ -33,13 +34,13 @@ func TestReltime_SQLite(t *testing.T) {
 	reg := fq.Registry{"at": {Type: fq.TypeTimestamp, Column: "at"}}
 
 	// _last 7d -> only "recent" (old is too far back; future isn't in the past window).
-	where, args, _ := reg.Compile(fq.SQLite{}, []fq.Condition{{Key: "at", Op: fq.OpLast, Values: []any{"7d"}}})
+	where, args, _ := reg.Compile(dialects.SQLite{}, []fq.Condition{{Key: "at", Op: fq.OpLast, Values: []any{"7d"}}})
 	if got := ids(t, db, "SELECT id FROM ev WHERE "+where, args); len(got) != 1 || got[0] != "recent" {
 		t.Errorf("_last 7d = %v, want [recent]", got)
 	}
 
 	// _within 3d -> only "future".
-	w2, a2, _ := reg.Compile(fq.SQLite{}, []fq.Condition{{Key: "at", Op: fq.OpWithin, Values: []any{"3d"}}})
+	w2, a2, _ := reg.Compile(dialects.SQLite{}, []fq.Condition{{Key: "at", Op: fq.OpWithin, Values: []any{"3d"}}})
 	if got := ids(t, db, "SELECT id FROM ev WHERE "+w2, a2); len(got) != 1 || got[0] != "future" {
 		t.Errorf("_within 3d = %v, want [future]", got)
 	}

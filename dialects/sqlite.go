@@ -1,7 +1,8 @@
-package filtersql
+package dialects
 
 import (
 	"fmt"
+	fq "github.com/raushanrk5/filtersql"
 	"strings"
 )
 
@@ -27,13 +28,13 @@ func (SQLite) QuoteIdent(ident string) string {
 
 // Like uses LIKE with an explicit ESCAPE, since SQLite has no default escape
 // character. escapeLike (shared) neutralizes % and _ in the literal value.
-func (SQLite) Like(q *Query, col, pattern string, match LikeMatch) string {
+func (SQLite) Like(q *fq.Query, col, pattern string, match fq.LikeMatch) string {
 	return fmt.Sprintf(`%s LIKE %s ESCAPE '\'`, col, q.Arg(likeNeedle(pattern, match)))
 }
 
 // ArrayContains queries a JSON-array column via json_each. "any" is a simple
 // EXISTS; "all" counts the distinct matches and compares to the wanted size.
-func (SQLite) ArrayContains(q *Query, col string, values []string, all bool) string {
+func (SQLite) ArrayContains(q *fq.Query, col string, values []string, all bool) string {
 	marks := make([]string, len(values))
 	for i, v := range values {
 		marks[i] = q.Arg(v)
@@ -50,7 +51,7 @@ func (SQLite) ArrayContains(q *Query, col string, values []string, all bool) str
 }
 
 // MapHasKeys tests a JSON-object column for the presence of each key.
-func (SQLite) MapHasKeys(q *Query, col string, keys []string) string {
+func (SQLite) MapHasKeys(q *fq.Query, col string, keys []string) string {
 	parts := make([]string, len(keys))
 	for i, k := range keys {
 		parts[i] = fmt.Sprintf("EXISTS (SELECT 1 FROM json_each(%s) WHERE key = %s)", col, q.Arg(k))
@@ -59,7 +60,7 @@ func (SQLite) MapHasKeys(q *Query, col string, keys []string) string {
 }
 
 // MapHasKeyValues tests a JSON-object column for each key/value pair.
-func (SQLite) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string {
+func (SQLite) MapHasKeyValues(q *fq.Query, col string, pairs []fq.KeyValue) string {
 	var parts []string
 	for _, p := range pairs {
 		for _, v := range p.Values {
@@ -73,18 +74,18 @@ func (SQLite) MapHasKeyValues(q *Query, col string, pairs []KeyValue) string {
 }
 
 // Aggregate renders an aggregate call; SQLite spells "count all" as count(*).
-func (SQLite) Aggregate(fn AggFunc, expr string) string {
+func (SQLite) Aggregate(fn fq.AggFunc, expr string) string {
 	return aggCall(fn, expr, "count(*)")
 }
 
 // OrderTerm uses SQLite's native NULLS FIRST/LAST support (3.30+).
-func (SQLite) OrderTerm(expr string, desc bool, nulls NullsOrder) string {
+func (SQLite) OrderTerm(expr string, desc bool, nulls fq.NullsOrder) string {
 	return stdOrderTerm(expr, desc, nulls)
 }
 
 // ScalarIn binds one JSON-array param and expands it with json_each, so a large
 // _in list uses a single placeholder instead of one per value.
-func (SQLite) ScalarIn(q *Query, col string, values []string, negate bool) string {
+func (SQLite) ScalarIn(q *fq.Query, col string, values []string, negate bool) string {
 	kw := "IN"
 	if negate {
 		kw = "NOT IN"
@@ -94,15 +95,15 @@ func (SQLite) ScalarIn(q *Query, col string, values []string, negate bool) strin
 
 func (SQLite) Now() string { return "datetime('now')" }
 
-func (SQLite) RelativeTime(amount int, unit TimeUnit) string {
+func (SQLite) RelativeTime(amount int, unit fq.TimeUnit) string {
 	// SQLite datetime modifiers have no 'weeks' — express weeks as days.
 	mod := "days"
 	switch unit {
-	case Minute:
+	case fq.Minute:
 		mod = "minutes"
-	case Hour:
+	case fq.Hour:
 		mod = "hours"
-	case Week:
+	case fq.Week:
 		amount *= 7
 	}
 	sign := "+"

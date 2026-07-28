@@ -1,9 +1,10 @@
-package filtersql
+package bind
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	fq "github.com/raushanrk5/filtersql"
 	"reflect"
 	"strings"
 	"sync"
@@ -123,19 +124,19 @@ func scanRows[T any](rs *sql.Rows, info structInfo) ([]T, error) {
 // FROM shape and tenant scoping to you (via Scope) — the FROM table is the only
 // thing it fills in.
 type Typed[T any] struct {
-	reg   Registry
+	reg   fq.Registry
 	table string
 	info  structInfo
 }
 
 // For builds a Typed[T]. It panics if T is not a struct or has no `db` tags —
 // both are programmer errors surfaced at startup.
-func For[T any](reg Registry, table string) *Typed[T] {
+func For[T any](reg fq.Registry, table string) *Typed[T] {
 	return &Typed[T]{reg: reg, table: table, info: infoFor[T]()}
 }
 
 // Select starts a typed query for the given dialect.
-func (t *Typed[T]) Select(d Dialect) *TypedSelect[T] {
+func (t *Typed[T]) Select(d fq.Dialect) *TypedSelect[T] {
 	return &TypedSelect[T]{t: t, d: d}
 }
 
@@ -144,10 +145,10 @@ func (t *Typed[T]) Select(d Dialect) *TypedSelect[T] {
 // never affects the placeholder numbering.
 type TypedSelect[T any] struct {
 	t       *Typed[T]
-	d       Dialect
-	scopeFn func(*Builder) string
-	conds   []Condition
-	sorts   []Sort
+	d       fq.Dialect
+	scopeFn func(*fq.Builder) string
+	conds   []fq.Condition
+	sorts   []fq.Sort
 	cursor  string
 	limit   int
 }
@@ -156,14 +157,14 @@ type TypedSelect[T any] struct {
 // with the *Builder so its placeholders share the query's numbering:
 //
 //	.Scope(func(b *filtersql.Builder) string { return "tenant_id = " + b.Arg(tid) })
-func (s *TypedSelect[T]) Scope(fn func(*Builder) string) *TypedSelect[T] { s.scopeFn = fn; return s }
+func (s *TypedSelect[T]) Scope(fn func(*fq.Builder) string) *TypedSelect[T] { s.scopeFn = fn; return s }
 
 // Where sets the filter conditions.
-func (s *TypedSelect[T]) Where(conds []Condition) *TypedSelect[T] { s.conds = conds; return s }
+func (s *TypedSelect[T]) Where(conds []fq.Condition) *TypedSelect[T] { s.conds = conds; return s }
 
 // Sort sets the ORDER BY (and the basis for keyset paging). Include a unique key
 // (e.g. id) last so pages don't repeat.
-func (s *TypedSelect[T]) Sort(sorts []Sort) *TypedSelect[T] { s.sorts = sorts; return s }
+func (s *TypedSelect[T]) Sort(sorts []fq.Sort) *TypedSelect[T] { s.sorts = sorts; return s }
 
 // After applies a next-page cursor (from a previous All).
 func (s *TypedSelect[T]) After(cursor string) *TypedSelect[T] { s.cursor = cursor; return s }
@@ -195,7 +196,7 @@ func (s *TypedSelect[T]) build(limit int) (string, []any, error) {
 		where = append(where, filt)
 	}
 	if s.cursor != "" {
-		cur, derr := DecodeCursor(s.cursor)
+		cur, derr := fq.DecodeCursor(s.cursor)
 		if derr != nil {
 			return "", nil, derr
 		}
@@ -226,7 +227,7 @@ func (s *TypedSelect[T]) build(limit int) (string, []any, error) {
 		sb.WriteString(order)
 	}
 	if limit > 0 {
-		lim, lerr := LimitOffset(limit, 0)
+		lim, lerr := fq.LimitOffset(limit, 0)
 		if lerr != nil {
 			return "", nil, lerr
 		}
@@ -263,7 +264,7 @@ func (s *TypedSelect[T]) All(ctx context.Context, db Querier) ([]T, string, erro
 	if s.limit > 0 && len(out) > s.limit {
 		out = out[:s.limit]
 		if cur := s.cursorFor(out[len(out)-1]); cur != nil {
-			next, _ = EncodeCursor(cur)
+			next, _ = fq.EncodeCursor(cur)
 		}
 	}
 	return out, next, nil
@@ -307,9 +308,9 @@ func (s *TypedSelect[T]) Count(ctx context.Context, db Querier) (int64, error) {
 
 // cursorFor reads the sort-key values off the last row to form the next cursor.
 // Returns nil (no cursor) if a sort key's column isn't a scannable struct field.
-func (s *TypedSelect[T]) cursorFor(v T) Cursor {
+func (s *TypedSelect[T]) cursorFor(v T) fq.Cursor {
 	rv := reflect.ValueOf(v)
-	c := Cursor{}
+	c := fq.Cursor{}
 	for _, srt := range s.sorts {
 		f := s.t.reg[srt.Key]
 		col := f.Column

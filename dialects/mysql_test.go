@@ -1,6 +1,8 @@
-package filtersql
+package dialects_test
 
 import (
+	. "github.com/raushanrk5/filtersql"
+	. "github.com/raushanrk5/filtersql/dialects"
 	"reflect"
 	"testing"
 )

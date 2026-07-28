@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	fq "github.com/raushanrk5/filtersql"
+	"github.com/raushanrk5/filtersql/bind"
+	"github.com/raushanrk5/filtersql/dialects"
 )
 
 // asset is a row type: its `db` tags name the columns to SELECT and scan into.
@@ -32,11 +34,11 @@ func assetIDs(rows []asset) string {
 
 func TestTyped_ExecuteScanAndPage(t *testing.T) {
 	db := setup(t)
-	tt := fq.For[asset](typedReg, "asset")
+	tt := bind.For[asset](typedReg, "asset")
 	ctx := context.Background()
 
 	// ACTIVE assets by severity desc: a1(9), a4(7), a2(5). Page size 2.
-	page1, next, err := tt.Select(fq.SQLite{}).
+	page1, next, err := tt.Select(dialects.SQLite{}).
 		Where([]fq.Condition{{Key: "status", Op: fq.OpEq, Values: []any{"ACTIVE"}}}).
 		Sort([]fq.Sort{{Key: "severity", Desc: true}, {Key: "id"}}).
 		Limit(2).
@@ -56,7 +58,7 @@ func TestTyped_ExecuteScanAndPage(t *testing.T) {
 	}
 
 	// Page 2 via the cursor: only a2 remains, and no further cursor.
-	page2, next2, err := tt.Select(fq.SQLite{}).
+	page2, next2, err := tt.Select(dialects.SQLite{}).
 		Where([]fq.Condition{{Key: "status", Op: fq.OpEq, Values: []any{"ACTIVE"}}}).
 		Sort([]fq.Sort{{Key: "severity", Desc: true}, {Key: "id"}}).
 		Limit(2).
@@ -75,9 +77,9 @@ func TestTyped_ExecuteScanAndPage(t *testing.T) {
 
 func TestTyped_Count(t *testing.T) {
 	db := setup(t)
-	tt := fq.For[asset](typedReg, "asset")
+	tt := bind.For[asset](typedReg, "asset")
 	// 3 ACTIVE assets (a1, a2, a4). Count ignores sort/limit/cursor.
-	n, err := tt.Select(fq.SQLite{}).
+	n, err := tt.Select(dialects.SQLite{}).
 		Where([]fq.Condition{{Key: "status", Op: fq.OpEq, Values: []any{"ACTIVE"}}}).
 		Sort([]fq.Sort{{Key: "severity", Desc: true}}).
 		Limit(2).

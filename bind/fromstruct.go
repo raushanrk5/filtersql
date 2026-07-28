@@ -1,7 +1,8 @@
-package filtersql
+package bind
 
 import (
 	"fmt"
+	fq "github.com/raushanrk5/filtersql"
 	"reflect"
 	"strings"
 	"time"
@@ -32,7 +33,7 @@ import (
 // not inferable.
 //
 // Anonymous embedded structs are flattened, so shared filter sets compose.
-func FromStruct(v any) (Registry, error) {
+func FromStruct(v any) (fq.Registry, error) {
 	t := reflect.TypeOf(v)
 	for t != nil && t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -40,7 +41,7 @@ func FromStruct(v any) (Registry, error) {
 	if t == nil || t.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("FromStruct: expected a struct or *struct, got %T", v)
 	}
-	reg := Registry{}
+	reg := fq.Registry{}
 	if err := collectFields(t, reg); err != nil {
 		return nil, err
 	}
@@ -48,7 +49,7 @@ func FromStruct(v any) (Registry, error) {
 }
 
 // MustFromStruct is FromStruct that panics on error, for package-level vars.
-func MustFromStruct(v any) Registry {
+func MustFromStruct(v any) fq.Registry {
 	reg, err := FromStruct(v)
 	if err != nil {
 		panic(err)
@@ -58,7 +59,7 @@ func MustFromStruct(v any) Registry {
 
 var timeType = reflect.TypeOf(time.Time{})
 
-func collectFields(t reflect.Type, reg Registry) error {
+func collectFields(t reflect.Type, reg fq.Registry) error {
 	for i := 0; i < t.NumField(); i++ {
 		sf := t.Field(i)
 
@@ -92,14 +93,14 @@ func collectFields(t reflect.Type, reg Registry) error {
 	return nil
 }
 
-func parseFilterTag(sf reflect.StructField, tag string) (string, Field, error) {
+func parseFilterTag(sf reflect.StructField, tag string) (string, fq.Field, error) {
 	parts := strings.Split(tag, ",")
 	key := strings.TrimSpace(parts[0])
 	if key == "" {
 		key = toSnakeCase(sf.Name)
 	}
 
-	var f Field
+	var f fq.Field
 
 	// Infer type (and nullability) from the Go type; a pointer implies nullable.
 	ft := sf.Type
@@ -119,7 +120,7 @@ func parseFilterTag(sf reflect.StructField, tag string) (string, Field, error) {
 		name, val, hasVal := strings.Cut(opt, "=")
 		switch name {
 		case "type":
-			f.Type, typeExplicit = Type(val), true
+			f.Type, typeExplicit = fq.Type(val), true
 		case "col":
 			f.Column = val
 		case "valueexpr":
@@ -145,58 +146,58 @@ func parseFilterTag(sf reflect.StructField, tag string) (string, Field, error) {
 		case "having":
 			f.Having = true
 		default:
-			return "", Field{}, fmt.Errorf("unknown filter option %q", name)
+			return "", fq.Field{}, fmt.Errorf("unknown filter option %q", name)
 		}
 		_ = hasVal
 	}
 
 	// enum implies TypeEnum unless the caller set a type explicitly.
-	if len(f.Enum) > 0 && !typeExplicit && inferred == TypeString {
-		f.Type = TypeEnum
+	if len(f.Enum) > 0 && !typeExplicit && inferred == fq.TypeString {
+		f.Type = fq.TypeEnum
 	}
 	// If we could not infer and no type= was given, that's an error.
 	if f.Type == "" {
 		if inferErr != nil {
-			return "", Field{}, inferErr
+			return "", fq.Field{}, inferErr
 		}
-		return "", Field{}, fmt.Errorf("missing type")
+		return "", fq.Field{}, fmt.Errorf("missing type")
 	}
-	if _, ok := typeOperators[f.Type]; !ok {
-		return "", Field{}, fmt.Errorf("unknown filter type %q", f.Type)
+	if f.Type.Operators() == nil {
+		return "", fq.Field{}, fmt.Errorf("unknown filter type %q", f.Type)
 	}
 	return key, f, nil
 }
 
 // parseOperatorList splits a pipe-separated list of operators, e.g. "_eq|_in".
-func parseOperatorList(s string) []Operator {
+func parseOperatorList(s string) []fq.Operator {
 	parts := strings.Split(s, "|")
-	ops := make([]Operator, 0, len(parts))
+	ops := make([]fq.Operator, 0, len(parts))
 	for _, p := range parts {
 		if p = strings.TrimSpace(p); p != "" {
-			ops = append(ops, Operator(p))
+			ops = append(ops, fq.Operator(p))
 		}
 	}
 	return ops
 }
 
-func inferDataType(t reflect.Type) (Type, error) {
+func inferDataType(t reflect.Type) (fq.Type, error) {
 	if t == timeType {
-		return TypeTimestamp, nil
+		return fq.TypeTimestamp, nil
 	}
 	switch t.Kind() {
 	case reflect.String:
-		return TypeString, nil
+		return fq.TypeString, nil
 	case reflect.Bool:
-		return TypeBool, nil
+		return fq.TypeBool, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return TypeInt, nil
+		return fq.TypeInt, nil
 	case reflect.Float32, reflect.Float64:
-		return TypeFloat, nil
+		return fq.TypeFloat, nil
 	case reflect.Slice, reflect.Array:
-		return TypeArray, nil
+		return fq.TypeArray, nil
 	case reflect.Map:
-		return TypeMap, nil
+		return fq.TypeMap, nil
 	}
 	return "", fmt.Errorf("cannot infer filter type for Go type %s (add type=...)", t)
 }

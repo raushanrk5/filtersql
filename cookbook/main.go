@@ -24,11 +24,12 @@ import (
 	"net/http"
 
 	fq "github.com/raushanrk5/filtersql"
+	"github.com/raushanrk5/filtersql/dialects"
 	_ "modernc.org/sqlite"
 )
 
 // dialect used everywhere in this service.
-var dialect fq.Dialect = fq.SQLite{}
+var dialect fq.Dialect = dialects.SQLite{}
 
 // assetFilters is the single source of truth for how assets can be filtered,
 // sorted, and projected. Adding a new filterable field is one line here — no SQL

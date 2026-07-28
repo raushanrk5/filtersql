@@ -1,6 +1,8 @@
-package filtersql
+package filtersql_test
 
 import (
+	. "github.com/raushanrk5/filtersql"
+	. "github.com/raushanrk5/filtersql/dialects"
 	"reflect"
 	"testing"
 )
@@ -146,8 +148,8 @@ func TestSchemaHidesVirtualAndReportsOperators(t *testing.T) {
 			t.Fatalf("hidden field should not appear in schema")
 		}
 		if fs.Key == "status" {
-			if !reflect.DeepEqual(fs.Operators, typeOperators[TypeEnum]) {
-				t.Errorf("status operators = %v, want %v", fs.Operators, typeOperators[TypeEnum])
+			if !reflect.DeepEqual(fs.Operators, TypeEnum.Operators()) {
+				t.Errorf("status operators = %v, want %v", fs.Operators, TypeEnum.Operators())
 			}
 			if !reflect.DeepEqual(fs.Enum, []string{"OPEN", "CLOSED"}) {
 				t.Errorf("status enum = %v", fs.Enum)

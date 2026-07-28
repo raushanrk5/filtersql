@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/lib/pq"
 	fq "github.com/raushanrk5/filtersql"
+	"github.com/raushanrk5/filtersql/dialects"
 )
 
 // pgReg exercises the Postgres-specific corners: native text[] arrays and a
@@ -96,7 +97,7 @@ func pgIDs(t *testing.T, db *sql.DB, query string, args []any) []string {
 
 func TestPostgres_ScalarAndLike(t *testing.T) {
 	db := pgSetup(t)
-	where, args, _ := pgReg.Compile(fq.Postgres{}, []fq.Condition{
+	where, args, _ := pgReg.Compile(dialects.Postgres{}, []fq.Condition{
 		{Key: "status", Op: fq.OpEq, Values: []any{"ACTIVE"}},
 		{Key: "name", Op: fq.OpLike, Values: []any{"web"}},
 	})
@@ -110,13 +111,13 @@ func TestPostgres_ArrayOperators(t *testing.T) {
 	db := pgSetup(t)
 
 	// && (contains any) — the ::text[] cast path.
-	w1, a1, _ := pgReg.Compile(fq.Postgres{}, []fq.Condition{{Key: "tags", Op: fq.OpContainsAny, Values: []any{"api", "db"}}})
+	w1, a1, _ := pgReg.Compile(dialects.Postgres{}, []fq.Condition{{Key: "tags", Op: fq.OpContainsAny, Values: []any{"api", "db"}}})
 	if got, want := pgIDs(t, db, "SELECT id FROM asset WHERE "+w1+" ORDER BY id", a1), []string{"a3", "a4"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("contains_any: got %v, want %v", got, want)
 	}
 
 	// @> (contains all).
-	w2, a2, _ := pgReg.Compile(fq.Postgres{}, []fq.Condition{{Key: "tags", Op: fq.OpContains, Values: []any{"prod", "crit"}}})
+	w2, a2, _ := pgReg.Compile(dialects.Postgres{}, []fq.Condition{{Key: "tags", Op: fq.OpContains, Values: []any{"prod", "crit"}}})
 	if got, want := pgIDs(t, db, "SELECT id FROM asset WHERE "+w2+" ORDER BY id", a2), []string{"a1"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("contains-all: got %v, want %v", got, want)
 	}
@@ -126,14 +127,14 @@ func TestPostgres_JsonbMapOperators(t *testing.T) {
 	db := pgSetup(t)
 
 	// has key/value: labels ->> 'env' = 'prod'  -> a1, a3, a4
-	w1, a1, _ := pgReg.Compile(fq.Postgres{}, []fq.Condition{
+	w1, a1, _ := pgReg.Compile(dialects.Postgres{}, []fq.Condition{
 		{Key: "labels", Op: fq.OpHasKeyValues, Pairs: []fq.KeyValue{{Key: "env", Values: []string{"prod"}}}}})
 	if got, want := pgIDs(t, db, "SELECT id FROM asset WHERE "+w1+" ORDER BY id", a1), []string{"a1", "a3", "a4"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("has_key_values: got %v, want %v", got, want)
 	}
 
 	// has key: labels ? 'env'  -> all four (the jsonb ? operator vs $N placeholder)
-	w2, a2, _ := pgReg.Compile(fq.Postgres{}, []fq.Condition{
+	w2, a2, _ := pgReg.Compile(dialects.Postgres{}, []fq.Condition{
 		{Key: "labels", Op: fq.OpHasKeys, Pairs: []fq.KeyValue{{Key: "env", Values: nil}}}})
 	if got := pgIDs(t, db, "SELECT id FROM asset WHERE "+w2+" ORDER BY id", a2); len(got) != 4 {
 		t.Errorf("has_keys: got %v, want 4 rows", got)
@@ -144,15 +145,15 @@ func TestPostgres_NullAndKeyset(t *testing.T) {
 	db := pgSetup(t)
 
 	// NULL owner -> a2
-	wn, an, _ := pgReg.Compile(fq.Postgres{}, []fq.Condition{{Key: "owner", Op: fq.OpIsNull}})
+	wn, an, _ := pgReg.Compile(dialects.Postgres{}, []fq.Condition{{Key: "owner", Op: fq.OpIsNull}})
 	if got, want := pgIDs(t, db, "SELECT id FROM asset WHERE "+wn, an), []string{"a2"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("is_null: got %v, want %v", got, want)
 	}
 
 	// Keyset: severity desc, id asc -> a1(9),a3(8),a4(7),a2(5); page after a3.
 	sorts := []fq.Sort{{Key: "severity", Desc: true}, {Key: "id"}}
-	order, _ := pgReg.OrderBy(fq.Postgres{}, sorts)
-	seek, sargs, _ := pgReg.KeysetWhere(fq.Postgres{}, sorts, fq.Cursor{"severity": 8, "id": "a3"})
+	order, _ := pgReg.OrderBy(dialects.Postgres{}, sorts)
+	seek, sargs, _ := pgReg.KeysetWhere(dialects.Postgres{}, sorts, fq.Cursor{"severity": 8, "id": "a3"})
 	got := pgIDs(t, db, "SELECT id FROM asset WHERE "+seek+" ORDER BY "+order, sargs)
 	if want := []string{"a4", "a2"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("keyset page: got %v, want %v", got, want)
@@ -162,7 +163,7 @@ func TestPostgres_NullAndKeyset(t *testing.T) {
 func TestPostgres_ScalarInAnyExecutes(t *testing.T) {
 	db := pgSetup(t)
 	// String _in binds one text[] param (= ANY) — no per-value placeholders.
-	where, args, err := pgReg.Compile(fq.Postgres{}, []fq.Condition{
+	where, args, err := pgReg.Compile(dialects.Postgres{}, []fq.Condition{
 		{Key: "name", Op: fq.OpIn, Values: []any{"web-01", "web-02"}}})
 	if err != nil {
 		t.Fatal(err)
@@ -178,7 +179,7 @@ func TestPostgres_BuilderContinuity(t *testing.T) {
 	// Combine a filter WHERE and a keyset seek in one Postgres query — this is
 	// the case where separate compiles would collide on $1. The Builder shares
 	// the counter so $N stays continuous and the args line up.
-	b := pgReg.Builder(fq.Postgres{})
+	b := pgReg.Builder(dialects.Postgres{})
 	where, err := b.Where([]fq.Condition{{Key: "status", Op: fq.OpEq, Values: []any{"ACTIVE"}}})
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +201,7 @@ func TestPostgres_BuilderContinuity(t *testing.T) {
 
 func TestPostgres_Having(t *testing.T) {
 	db := pgSetup(t)
-	_, having, args, _ := pgReg.CompileWhereHaving(fq.Postgres{}, nil,
+	_, having, args, _ := pgReg.CompileWhereHaving(dialects.Postgres{}, nil,
 		[]fq.Condition{{Key: "finding_count", Op: fq.OpGt, Values: []any{1}}})
 	// ACTIVE=3, ARCHIVED=1 -> only ACTIVE survives count(*) > 1
 	got := pgIDs(t, db, "SELECT status FROM asset GROUP BY status HAVING "+having+" ORDER BY status", args)
